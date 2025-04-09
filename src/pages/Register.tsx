@@ -88,7 +88,24 @@ const Register: React.FC = () => {
         if (profileError) throw profileError;
         
         toast.success("Account created successfully!");
-        navigate('/dashboard');
+        
+        // Redirect based on user role
+        switch(formData.role) {
+          case 'asr_contributor':
+            navigate('/asr');
+            break;
+          case 'tts_contributor':
+            navigate('/tts');
+            break;
+          case 'transcriber':
+            navigate('/transcribe');
+            break;
+          case 'validator':
+            navigate('/validate');
+            break;
+          default:
+            navigate('/dashboard');
+        }
       }
     } catch (error: any) {
       console.error('Registration error:', error);
