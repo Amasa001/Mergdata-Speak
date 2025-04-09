@@ -2,42 +2,54 @@
 import React, { useEffect, useState } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 // Import role-specific dashboards
 import { ASRDashboard } from '@/components/dashboard/roles/ASRDashboard';
 import { TTSDashboard } from '@/components/dashboard/roles/TTSDashboard';
 import { TranscriberDashboard } from '@/components/dashboard/roles/TranscriberDashboard';
 import { ValidatorDashboard } from '@/components/dashboard/roles/ValidatorDashboard';
+import { Loader2 } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
   const [userRole, setUserRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   useEffect(() => {
     async function fetchUserProfile() {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         
-        if (user) {
-          // Fetch user profile from profiles table
-          const { data: profileData, error } = await supabase
-            .from('profiles')
-            .select('full_name, role')
-            .eq('id', user.id)
-            .single();
-            
-          if (error) {
-            console.error('Error fetching user profile:', error);
-          } else if (profileData) {
-            setUserName(profileData.full_name);
-            setUserRole(profileData.role);
-          }
+        if (!user) {
+          setIsAuthenticated(false);
+          setLoading(false);
+          return;
+        }
+        
+        setIsAuthenticated(true);
+        
+        // Fetch user profile from profiles table
+        const { data: profileData, error } = await supabase
+          .from('profiles')
+          .select('full_name, role')
+          .eq('id', user.id)
+          .single();
+          
+        if (error) {
+          console.error('Error fetching user profile:', error);
+          toast.error('Failed to load your profile');
+        } else if (profileData) {
+          setUserName(profileData.full_name);
+          setUserRole(profileData.role);
+          console.log('User role:', profileData.role);
         }
       } catch (error) {
         console.error('Error fetching user data:', error);
+        toast.error('Something went wrong loading your dashboard');
       } finally {
         setLoading(false);
       }
@@ -57,7 +69,14 @@ const Dashboard: React.FC = () => {
       case 'validator':
         return <ValidatorDashboard />;
       default:
-        return <div className="text-center py-12">No role assigned. Please contact an administrator.</div>;
+        return (
+          <div className="text-center py-12">
+            <p className="text-lg mb-6">No role assigned. Please contact an administrator or update your profile.</p>
+            <Link to="/profile">
+              <Button>Update Profile</Button>
+            </Link>
+          </div>
+        );
     }
   };
   
@@ -109,12 +128,17 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  if (isAuthenticated === false) {
+    return <Navigate to="/login" />;
+  }
+
   if (loading) {
     return (
       <MainLayout>
         <div className="container mx-auto px-4 py-8">
           <div className="flex justify-center items-center h-64">
-            <p>Loading your dashboard...</p>
+            <Loader2 className="h-8 w-8 animate-spin text-afri-orange" />
+            <p className="ml-2">Loading your dashboard...</p>
           </div>
         </div>
       </MainLayout>

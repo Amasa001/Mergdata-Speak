@@ -1,13 +1,80 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Mic, Headphones, Globe, Menu } from 'lucide-react';
+import { Mic, Headphones, Globe, Menu, User, LogOut } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuSeparator, 
+  DropdownMenuTrigger 
+} from '@/components/ui/dropdown-menu';
+import { supabase } from '@/integrations/supabase/client';
 
 export const Header: React.FC = () => {
   const isMobile = useIsMobile();
+  const [user, setUser] = useState<any>(null);
+  const [userName, setUserName] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Check for user session on component mount
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUser(user);
+        
+        // Fetch user profile to get full name
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', user.id)
+          .single();
+        
+        if (profileData) {
+          setUserName(profileData.full_name);
+        }
+      }
+    };
+    
+    fetchUser();
+    
+    // Set up auth state listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (event === 'SIGNED_IN' && session?.user) {
+          setUser(session.user);
+          
+          // Fetch user profile in timeout to avoid potential Supabase deadlock
+          setTimeout(async () => {
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('full_name')
+              .eq('id', session.user.id)
+              .single();
+            
+            if (profileData) {
+              setUserName(profileData.full_name);
+            }
+          }, 0);
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+          setUserName(null);
+        }
+      }
+    );
+    
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+  
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    window.location.href = '/';
+  };
 
   const NavLinks = () => (
     <>
@@ -46,16 +113,29 @@ export const Header: React.FC = () => {
             <SheetContent>
               <div className="flex flex-col space-y-6 mt-8 text-lg">
                 <NavLinks />
-                <div className="flex flex-col space-y-3 pt-4">
-                  <Link to="/login">
-                    <Button variant="outline" className="w-full">
-                      Log In
+                {!user ? (
+                  <div className="flex flex-col space-y-3 pt-4">
+                    <Link to="/login">
+                      <Button variant="outline" className="w-full">
+                        Log In
+                      </Button>
+                    </Link>
+                    <Link to="/register">
+                      <Button className="w-full">Sign Up</Button>
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="flex flex-col space-y-3 pt-4">
+                    <Link to="/dashboard">
+                      <Button variant="outline" className="w-full">
+                        Dashboard
+                      </Button>
+                    </Link>
+                    <Button onClick={handleSignOut} className="w-full">
+                      Sign Out
                     </Button>
-                  </Link>
-                  <Link to="/register">
-                    <Button className="w-full">Sign Up</Button>
-                  </Link>
-                </div>
+                  </div>
+                )}
               </div>
             </SheetContent>
           </Sheet>
@@ -65,12 +145,39 @@ export const Header: React.FC = () => {
               <NavLinks />
             </nav>
             <div className="hidden md:flex space-x-3">
-              <Link to="/login">
-                <Button variant="outline">Log In</Button>
-              </Link>
-              <Link to="/register">
-                <Button>Sign Up</Button>
-              </Link>
+              {!user ? (
+                <>
+                  <Link to="/login">
+                    <Button variant="outline">Log In</Button>
+                  </Link>
+                  <Link to="/register">
+                    <Button>Sign Up</Button>
+                  </Link>
+                </>
+              ) : (
+                <div className="flex items-center space-x-3">
+                  <Link to="/dashboard">
+                    <Button variant="outline">Dashboard</Button>
+                  </Link>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" className="flex items-center space-x-1">
+                        <User className="h-4 w-4 mr-1" />
+                        <span className="max-w-[120px] truncate">{userName || 'Account'}</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem>
+                        <Link to="/profile" className="flex w-full">Profile</Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer">
+                        <LogOut className="h-4 w-4 mr-2" /> Sign Out
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              )}
             </div>
           </>
         )}
