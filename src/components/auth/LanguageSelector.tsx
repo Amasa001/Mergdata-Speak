@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Check } from 'lucide-react';
 import {
@@ -7,6 +6,7 @@ import {
   CommandGroup,
   CommandInput,
   CommandItem,
+  CommandList,
 } from '@/components/ui/command';
 import {
   Popover,
@@ -15,47 +15,54 @@ import {
 } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface LanguageSelectorProps {
-  selectedLanguage: string;
+  selectedLanguages: string[];
   onSelectLanguage: (language: string) => void;
+  roleType?: string;
 }
 
 export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
-  selectedLanguage,
-  onSelectLanguage
+  selectedLanguages,
+  onSelectLanguage,
+  roleType
 }) => {
   const [open, setOpen] = React.useState(false);
 
-  const languages = [
-    // West African Languages
-    { value: "yoruba", label: "Yoruba" },
-    { value: "igbo", label: "Igbo" },
-    { value: "hausa", label: "Hausa" },
-    { value: "twi", label: "Twi" },
-    { value: "wolof", label: "Wolof" },
-    { value: "fulani", label: "Fulani" },
-    
-    // East African Languages
-    { value: "swahili", label: "Swahili" },
-    { value: "amharic", label: "Amharic" },
-    { value: "somali", label: "Somali" },
-    { value: "oromo", label: "Oromo" },
-    { value: "luganda", label: "Luganda" },
-    { value: "kinyarwanda", label: "Kinyarwanda" },
-    
-    // Southern African Languages
-    { value: "zulu", label: "Zulu" },
-    { value: "xhosa", label: "Xhosa" },
-    { value: "shona", label: "Shona" },
-    { value: "ndebele", label: "Ndebele" },
-    { value: "sesotho", label: "Sesotho" },
-    { value: "setswana", label: "Setswana" },
-  ];
+  const languagesByRegion = {
+    "West African": [
+      { value: "akan", label: "Akan" },
+      { value: "ewe", label: "Ewe" },
+      { value: "yoruba", label: "Yoruba" },
+      { value: "ga", label: "Ga" },
+      { value: "hausa", label: "Hausa" },
+      { value: "dagbani", label: "Dagbani" },
+      { value: "sissale", label: "Sissale" },
+      { value: "dagaare", label: "Dagaare" },
+      { value: "dioula", label: "Dioula" },
+      { value: "baule", label: "Baule" },
+      { value: "krio", label: "Krio" },
+      { value: "mende", label: "Mende" },
+      { value: "temne", label: "Temne" },
+      { value: "fongbe", label: "Fongbe" },
+      { value: "igbo", label: "Igbo" },
+    ],
+    "East African": [
+      { value: "swahili", label: "Swahili" },
+      { value: "kiswahili_pidgin", label: "Kiswahili Pidgin" },
+      { value: "kikuyu", label: "Kikuyu" },
+      { value: "kalenjin", label: "Kalenjin" },
+    ]
+  };
 
-  const selectedLanguageLabel = languages.find(
-    lang => lang.value === selectedLanguage
-  )?.label || "Select language...";
+  const allLanguages = Object.values(languagesByRegion).flat();
+
+  const selectedLanguagesDisplay = selectedLanguages.length > 0
+    ? selectedLanguages.length === 1
+      ? allLanguages.find(lang => lang.value === selectedLanguages[0])?.label
+      : `${selectedLanguages.length} languages selected`
+    : "Select languages...";
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -66,7 +73,7 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
           aria-expanded={open}
           className="w-full justify-between"
         >
-          {selectedLanguageLabel}
+          {selectedLanguagesDisplay}
           <svg
             xmlns="http://www.w3.org/2000/svg"
             width="24"
@@ -84,31 +91,41 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
           </svg>
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-full p-0">
+      <PopoverContent className="p-0" style={{ width: "350px" }}>
         <Command>
           <CommandInput placeholder="Search language..." />
-          <CommandEmpty>No language found.</CommandEmpty>
-          <CommandGroup className="max-h-60 overflow-y-auto">
-            {languages.map((language) => (
-              <CommandItem
-                key={language.value}
-                onSelect={() => {
-                  onSelectLanguage(language.value);
-                  setOpen(false);
-                }}
-                value={language.value}
-              >
-                <Check
-                  className={cn(
-                    "mr-2 h-4 w-4",
-                    selectedLanguage === language.value ? "opacity-100" : "opacity-0"
-                  )}
-                />
-                {language.label}
-              </CommandItem>
+          <CommandList>
+            <CommandEmpty>No language found.</CommandEmpty>
+            {Object.entries(languagesByRegion).map(([region, languages]) => (
+              <CommandGroup key={region} heading={region}>
+                {languages.map((language) => (
+                  <CommandItem
+                    key={language.value}
+                    onSelect={() => {
+                      onSelectLanguage(language.value);
+                      // Keep open for multiple selection
+                    }}
+                    className="flex items-center"
+                  >
+                    <div className="flex items-center flex-1 space-x-2">
+                      <Checkbox 
+                        checked={selectedLanguages.includes(language.value)}
+                        onCheckedChange={() => onSelectLanguage(language.value)}
+                        className="mr-2"
+                      />
+                      <span>{language.label}</span>
+                    </div>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
             ))}
-          </CommandGroup>
+          </CommandList>
         </Command>
+        <div className="flex justify-end p-2 border-t">
+          <Button size="sm" onClick={() => setOpen(false)}>
+            Done
+          </Button>
+        </div>
       </PopoverContent>
     </Popover>
   );

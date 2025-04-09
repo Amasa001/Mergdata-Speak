@@ -17,8 +17,8 @@ const Register: React.FC = () => {
     email: '',
     password: '',
     confirmPassword: '',
-    role: '',
-    primaryLanguage: '',
+    roles: [] as string[],
+    languages: [] as string[],
   });
   
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -27,11 +27,27 @@ const Register: React.FC = () => {
   };
   
   const handleRoleSelect = (roleId: string) => {
-    setFormData(prev => ({ ...prev, role: roleId }));
+    setFormData(prev => {
+      if (prev.roles.includes(roleId)) {
+        // Remove the role if already selected
+        return { ...prev, roles: prev.roles.filter(r => r !== roleId) };
+      } else {
+        // Add the role if not already selected
+        return { ...prev, roles: [...prev.roles, roleId] };
+      }
+    });
   };
   
   const handleLanguageSelect = (language: string) => {
-    setFormData(prev => ({ ...prev, primaryLanguage: language }));
+    setFormData(prev => {
+      if (prev.languages.includes(language)) {
+        // Remove the language if already selected
+        return { ...prev, languages: prev.languages.filter(l => l !== language) };
+      } else {
+        // Add the language if not already selected
+        return { ...prev, languages: [...prev.languages, language] };
+      }
+    });
   };
   
   const handleNextStep = () => {
@@ -52,12 +68,12 @@ const Register: React.FC = () => {
   return (
     <MainLayout>
       <div className="min-h-screen py-12 px-4">
-        <div className="container mx-auto max-w-md">
+        <div className="container mx-auto max-w-xl"> {/* Increased max-width */}
           <Card className="shadow-lg border-none">
             <CardHeader>
               <CardTitle className="text-2xl">Create Your Account</CardTitle>
               <CardDescription>
-                Step {step} of 3: {step === 1 ? 'Basic Information' : step === 2 ? 'Choose Your Role' : 'Select Languages'}
+                Step {step} of 3: {step === 1 ? 'Basic Information' : step === 2 ? 'Choose Your Roles' : 'Select Languages'}
               </CardDescription>
             </CardHeader>
             
@@ -121,11 +137,11 @@ const Register: React.FC = () => {
                 {step === 2 && (
                   <div className="space-y-4">
                     <p className="text-sm text-gray-500 mb-4">
-                      Select how you'd like to contribute to the platform:
+                      Select one or more roles you'd like to contribute with:
                     </p>
                     
                     <RoleSelector 
-                      selectedRole={formData.role}
+                      selectedRoles={formData.roles}
                       onSelectRole={handleRoleSelect}
                     />
                   </div>
@@ -134,19 +150,19 @@ const Register: React.FC = () => {
                 {step === 3 && (
                   <div className="space-y-4">
                     <p className="text-sm text-gray-500 mb-4">
-                      Select your primary African language for contributions:
+                      Select your preferred African languages for contributions:
                     </p>
                     
                     <div className="space-y-2">
-                      <Label htmlFor="primaryLanguage">Primary Language</Label>
+                      <Label htmlFor="languages">Languages</Label>
                       <LanguageSelector
-                        selectedLanguage={formData.primaryLanguage}
+                        selectedLanguages={formData.languages}
                         onSelectLanguage={handleLanguageSelect}
                       />
                     </div>
                     
                     <p className="text-xs text-gray-500 mt-4">
-                      You can add more languages later in your profile settings.
+                      You can add or remove languages later in your profile settings.
                     </p>
                   </div>
                 )}
@@ -165,7 +181,7 @@ const Register: React.FC = () => {
                     className="ml-auto"
                     onClick={handleNextStep}
                     disabled={(step === 1 && (!formData.fullName || !formData.email || !formData.password || !formData.confirmPassword)) ||
-                              (step === 2 && !formData.role)}
+                              (step === 2 && formData.roles.length === 0)}
                   >
                     Next
                   </Button>
@@ -173,7 +189,7 @@ const Register: React.FC = () => {
                   <Button 
                     className="ml-auto" 
                     onClick={handleSubmit}
-                    disabled={!formData.primaryLanguage}
+                    disabled={formData.languages.length === 0}
                   >
                     Create Account
                   </Button>

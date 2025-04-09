@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Mic, FileText, Headphones, CheckCircle } from 'lucide-react';
 
 interface RoleOption {
@@ -12,12 +13,12 @@ interface RoleOption {
 }
 
 interface RoleSelectorProps {
-  selectedRole: string;
+  selectedRoles: string[];
   onSelectRole: (roleId: string) => void;
 }
 
 export const RoleSelector: React.FC<RoleSelectorProps> = ({ 
-  selectedRole, 
+  selectedRoles, 
   onSelectRole 
 }) => {
   const roleOptions: RoleOption[] = [
@@ -51,27 +52,36 @@ export const RoleSelector: React.FC<RoleSelectorProps> = ({
     }
   ];
 
+  const handleRoleToggle = (roleId: string) => {
+    onSelectRole(roleId);
+  };
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       {roleOptions.map((role) => (
         <Card 
           key={role.id}
           className={`cursor-pointer transition-all ${
-            selectedRole === role.id 
+            selectedRoles.includes(role.id) 
               ? 'ring-2 ring-afri-orange shadow-md' 
               : 'hover:shadow'
           }`}
-          onClick={() => onSelectRole(role.id)}
+          onClick={() => handleRoleToggle(role.id)}
         >
           <CardContent className="p-4">
             <div className="flex items-start space-x-4">
               <div className={`p-2 rounded-full ${role.color}`}>
                 {role.icon}
               </div>
-              <div>
+              <div className="flex-grow">
                 <h3 className="font-medium">{role.title}</h3>
                 <p className="text-sm text-gray-500">{role.description}</p>
               </div>
+              <Checkbox 
+                checked={selectedRoles.includes(role.id)}
+                onCheckedChange={() => handleRoleToggle(role.id)}
+                className="mt-1"
+              />
             </div>
           </CardContent>
         </Card>
