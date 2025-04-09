@@ -1,107 +1,141 @@
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
-import { UserStats } from '@/components/dashboard/UserStats';
-import { ActivityFeed } from '@/components/dashboard/ActivityFeed';
-import { TasksList } from '@/components/dashboard/TasksList';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
+
+// Import role-specific dashboards
+import { ASRDashboard } from '@/components/dashboard/roles/ASRDashboard';
+import { TTSDashboard } from '@/components/dashboard/roles/TTSDashboard';
+import { TranscriberDashboard } from '@/components/dashboard/roles/TranscriberDashboard';
+import { ValidatorDashboard } from '@/components/dashboard/roles/ValidatorDashboard';
 
 const Dashboard: React.FC = () => {
-  // Mock data for demonstration
-  const userStats = {
-    recordingCount: 42,
-    recordingHours: 3.5,
-    transcriptionCount: 28,
-    validationCount: 15
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [userName, setUserName] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchUserProfile() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (user) {
+          // Fetch user profile from profiles table
+          const { data: profileData, error } = await supabase
+            .from('profiles')
+            .select('full_name, role')
+            .eq('id', user.id)
+            .single();
+            
+          if (error) {
+            console.error('Error fetching user profile:', error);
+          } else if (profileData) {
+            setUserName(profileData.full_name);
+            setUserRole(profileData.role);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    fetchUserProfile();
+  }, []);
+  
+  const renderDashboardByRole = () => {
+    switch (userRole) {
+      case 'asr_contributor':
+        return <ASRDashboard />;
+      case 'tts_contributor':
+        return <TTSDashboard />;
+      case 'transcriber':
+        return <TranscriberDashboard />;
+      case 'validator':
+        return <ValidatorDashboard />;
+      default:
+        return <div className="text-center py-12">No role assigned. Please contact an administrator.</div>;
+    }
+  };
+  
+  // Get appropriate action buttons based on user role
+  const getActionButtons = () => {
+    switch (userRole) {
+      case 'asr_contributor':
+        return (
+          <Link to="/asr">
+            <Button>Record Audio</Button>
+          </Link>
+        );
+      case 'tts_contributor':
+        return (
+          <Link to="/tts">
+            <Button>Record Voice</Button>
+          </Link>
+        );
+      case 'transcriber':
+        return (
+          <Link to="/transcribe">
+            <Button>Transcribe</Button>
+          </Link>
+        );
+      case 'validator':
+        return (
+          <Link to="/validate">
+            <Button>Validate</Button>
+          </Link>
+        );
+      default:
+        return null;
+    }
   };
 
-  const recentActivities = [
-    {
-      id: 1,
-      type: 'recording' as const,
-      language: 'Swahili',
-      time: '2 hours ago',
-      status: 'completed' as const,
-      details: 'Recorded a 15-second description of market scene'
-    },
-    {
-      id: 2,
-      type: 'transcription' as const,
-      language: 'Yoruba',
-      time: '1 day ago',
-      status: 'pending' as const,
-      details: 'Transcribed audio for traditional story'
-    },
-    {
-      id: 3, 
-      type: 'validation' as const,
-      language: 'Amharic',
-      time: '3 days ago',
-      status: 'completed' as const,
-      details: 'Validated 5 transcriptions for ASR training'
+  // Get role-specific title
+  const getRoleTitle = () => {
+    switch (userRole) {
+      case 'asr_contributor':
+        return 'ASR Contributor Dashboard';
+      case 'tts_contributor':
+        return 'TTS Contributor Dashboard';
+      case 'transcriber':
+        return 'Transcription Dashboard';
+      case 'validator':
+        return 'Validation Dashboard';
+      default:
+        return 'Dashboard';
     }
-  ];
+  };
 
-  const availableTasks = [
-    {
-      id: 1,
-      type: 'asr' as const,
-      title: 'Describe Images (ASR)',
-      description: 'Record yourself describing 10 images in Swahili',
-      language: 'Swahili',
-      estimatedTime: '15 minutes',
-      difficulty: 'easy' as const
-    },
-    {
-      id: 2,
-      type: 'transcription' as const,
-      title: 'Transcribe Folk Stories',
-      description: 'Transcribe 3 audio recordings of Yoruba folk stories',
-      language: 'Yoruba',
-      estimatedTime: '30 minutes',
-      difficulty: 'medium' as const
-    },
-    {
-      id: 3,
-      type: 'validation' as const,
-      title: 'Validate Transcriptions',
-      description: 'Review and validate 15 audio-transcript pairs in Amharic',
-      language: 'Amharic',
-      estimatedTime: '45 minutes',
-      difficulty: 'hard' as const
-    }
-  ];
+  if (loading) {
+    return (
+      <MainLayout>
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex justify-center items-center h-64">
+            <p>Loading your dashboard...</p>
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
 
   return (
     <MainLayout>
       <div className="container mx-auto px-4 py-8">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold">Dashboard</h1>
-            <p className="text-gray-500">Welcome back to AfriSpeakNexus</p>
+            <h1 className="text-2xl font-bold">{getRoleTitle()}</h1>
+            <p className="text-gray-500">Welcome back{userName ? `, ${userName}` : ''} to AfriSpeakNexus</p>
           </div>
           <div className="flex space-x-2 mt-4 md:mt-0">
-            <Link to="/asr">
-              <Button variant="outline">Record Audio</Button>
-            </Link>
-            <Link to="/transcribe">
-              <Button>Transcribe</Button>
-            </Link>
+            {getActionButtons()}
           </div>
         </div>
 
         <div className="space-y-8">
-          <UserStats stats={userStats} />
-          
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
-              <TasksList tasks={availableTasks} />
-            </div>
-            <div>
-              <ActivityFeed activities={recentActivities} />
-            </div>
-          </div>
+          {renderDashboardByRole()}
         </div>
       </div>
     </MainLayout>
