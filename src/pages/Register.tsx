@@ -8,13 +8,8 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { RoleSelector } from '@/components/auth/RoleSelector';
 import { LanguageSelector } from '@/components/auth/LanguageSelector';
 import { Link, useNavigate } from 'react-router-dom';
-import { createClient } from '@supabase/supabase-js';
 import { toast } from 'sonner';
-
-// Initialize Supabase client - you'll need to replace these with your actual Supabase credentials
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseKey);
+import { supabase } from '@/integrations/supabase/client';
 
 const Register: React.FC = () => {
   const navigate = useNavigate();
@@ -67,7 +62,7 @@ const Register: React.FC = () => {
     setIsLoading(true);
     
     try {
-      // 1. Register user with Supabase Auth
+      // Register user with Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
@@ -80,28 +75,24 @@ const Register: React.FC = () => {
       
       if (authError) throw authError;
       
-      // 2. Store additional user data in the profiles table
+      // Store additional user data in profiles table
       if (authData.user) {
         const { error: profileError } = await supabase
           .from('profiles')
-          .insert([
-            { 
-              id: authData.user.id, 
-              full_name: formData.fullName,
-              role: formData.role,
-              languages: formData.languages,
-              created_at: new Date().toISOString(),
-            }
-          ]);
+          .update({ 
+            role: formData.role,
+            languages: formData.languages,
+          })
+          .eq('id', authData.user.id);
           
         if (profileError) throw profileError;
         
         toast.success("Account created successfully!");
         navigate('/dashboard');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Registration error:', error);
-      toast.error("Failed to create account. Please try again.");
+      toast.error(error.message || "Failed to create account. Please try again.");
     } finally {
       setIsLoading(false);
     }
