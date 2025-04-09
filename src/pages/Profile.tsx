@@ -8,7 +8,9 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+import { Loader2, CheckCircle } from 'lucide-react';
+import { RoleSelector } from '@/components/auth/RoleSelector';
+import { LanguageSelector } from '@/components/auth/LanguageSelector';
 
 const Profile: React.FC = () => {
   const navigate = useNavigate();
@@ -21,6 +23,7 @@ const Profile: React.FC = () => {
     role: '',
     languages: [] as string[]
   });
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
   useEffect(() => {
     async function fetchProfile() {
@@ -68,21 +71,39 @@ const Profile: React.FC = () => {
     setProfile(prev => ({ ...prev, [name]: value }));
   };
 
+  const handleRoleChange = (role: string) => {
+    setProfile(prev => ({ ...prev, role }));
+  };
+
+  const handleLanguageToggle = (language: string) => {
+    setProfile(prev => {
+      const languages = prev.languages || [];
+      const updatedLanguages = languages.includes(language)
+        ? languages.filter(lang => lang !== language)
+        : [...languages, language];
+      
+      return { ...prev, languages: updatedLanguages };
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setUpdating(true);
+    setSaveSuccess(false);
     
     try {
       const { error } = await supabase
         .from('profiles')
         .update({ 
           full_name: profile.fullName,
-          // role and languages would typically be updated here as well
+          role: profile.role,
+          languages: profile.languages
         })
         .eq('id', user.id);
         
       if (error) throw error;
       
+      setSaveSuccess(true);
       toast.success('Profile updated successfully!');
     } catch (error: any) {
       console.error('Error updating profile:', error);
@@ -90,17 +111,6 @@ const Profile: React.FC = () => {
     } finally {
       setUpdating(false);
     }
-  };
-
-  const getRoleName = (roleId: string) => {
-    const roles: Record<string, string> = {
-      'asr_contributor': 'ASR Contributor',
-      'tts_contributor': 'TTS Contributor',
-      'transcriber': 'Transcriber',
-      'validator': 'Validator'
-    };
-    
-    return roles[roleId] || roleId;
   };
 
   if (loading) {
@@ -124,7 +134,7 @@ const Profile: React.FC = () => {
             <CardHeader>
               <CardTitle className="text-2xl">Your Profile</CardTitle>
               <CardDescription>
-                Update your personal information
+                Update your personal information and contribution preferences
               </CardDescription>
             </CardHeader>
             
@@ -154,48 +164,44 @@ const Profile: React.FC = () => {
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="role">Contribution Role</Label>
-                  <Input
-                    id="role"
-                    value={getRoleName(profile.role)}
-                    disabled
-                    className="bg-gray-50"
+                  <Label>Contribution Role</Label>
+                  <RoleSelector 
+                    selectedRole={profile.role} 
+                    onSelectRole={handleRoleChange} 
                   />
-                  <p className="text-xs text-gray-500">
-                    Contact support to change your contribution role
-                  </p>
                 </div>
                 
                 <div className="space-y-2">
                   <Label>Languages</Label>
-                  <div className="flex flex-wrap gap-2 p-3 border rounded-md bg-gray-50">
-                    {profile.languages && profile.languages.length > 0 ? (
-                      profile.languages.map((language, index) => (
-                        <span 
-                          key={index} 
-                          className="bg-afri-orange/20 text-afri-orange px-2 py-1 rounded text-sm"
-                        >
-                          {language}
-                        </span>
-                      ))
-                    ) : (
-                      <p className="text-gray-500 text-sm">No languages selected</p>
-                    )}
+                  <div className="mt-2">
+                    <LanguageSelector
+                      selectedLanguages={profile.languages}
+                      onSelectLanguage={handleLanguageToggle}
+                      roleType={profile.role}
+                    />
                   </div>
                 </div>
               </CardContent>
               
-              <CardFooter className="flex justify-end border-t pt-6">
-                <Button type="submit" disabled={updating}>
-                  {updating ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Updating...
-                    </>
-                  ) : (
-                    'Save Changes'
-                  )}
-                </Button>
+              <CardFooter className="flex items-center justify-between border-t pt-6">
+                {saveSuccess && (
+                  <div className="flex items-center text-green-600">
+                    <CheckCircle className="h-4 w-4 mr-1" />
+                    <span className="text-sm">Changes saved</span>
+                  </div>
+                )}
+                <div className="ml-auto">
+                  <Button type="submit" disabled={updating}>
+                    {updating ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Updating...
+                      </>
+                    ) : (
+                      'Save Changes'
+                    )}
+                  </Button>
+                </div>
               </CardFooter>
             </form>
           </Card>
