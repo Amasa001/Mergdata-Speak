@@ -4,91 +4,173 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { TranscriptionEditor } from '@/components/transcription/TranscriptionEditor';
-import { ArrowLeft, ArrowRight, Check } from 'lucide-react';
+import { ArrowLeft, SkipForward, Check } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 
 const TranscribeTask: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [currentAudioIndex, setCurrentAudioIndex] = useState(0);
+  const [currentTaskIndex, setCurrentTaskIndex] = useState(0);
+  const [currentBatchIndex, setCurrentBatchIndex] = useState(0);
   const [transcriptions, setTranscriptions] = useState<Record<number, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isCurrentTaskComplete, setIsCurrentTaskComplete] = useState(false);
 
-  // Mock audio files for transcription task
-  const audioSamples = [
-    { 
-      id: 1, 
-      title: "Traditional Story",
-      language: "Swahili",
-      description: "A short recording of a traditional story. Transcribe what you hear.",
-      // In a real app, this would be a path to an actual audio file
-      audioSrc: "https://example.com/audio/sample1.mp3" 
-    },
-    { 
-      id: 2,
-      title: "Conversation",
-      language: "Yoruba",
-      description: "A short conversation between two people. Transcribe what you hear.",
-      audioSrc: "https://example.com/audio/sample2.mp3"
-    },
-    { 
-      id: 3,
-      title: "News Bulletin",
-      language: "Amharic",
-      description: "A short news bulletin. Transcribe what you hear.",
-      audioSrc: "https://example.com/audio/sample3.mp3"
-    },
+  // Mock audio files for transcription task in batches
+  const taskBatches = [
+    [
+      { 
+        id: 1, 
+        title: "Traditional Story",
+        language: "Swahili",
+        description: "A short recording of a traditional story. Transcribe what you hear.",
+        audioSrc: "https://example.com/audio/sample1.mp3" 
+      },
+      { 
+        id: 2,
+        title: "Conversation",
+        language: "Yoruba",
+        description: "A short conversation between two people. Transcribe what you hear.",
+        audioSrc: "https://example.com/audio/sample2.mp3"
+      },
+      { 
+        id: 3,
+        title: "News Bulletin",
+        language: "Amharic",
+        description: "A short news bulletin. Transcribe what you hear.",
+        audioSrc: "https://example.com/audio/sample3.mp3"
+      },
+      { 
+        id: 4,
+        title: "Folk Tale",
+        language: "Swahili",
+        description: "A folk tale narration. Transcribe what you hear.",
+        audioSrc: "https://example.com/audio/sample4.mp3"
+      },
+      { 
+        id: 5,
+        title: "Weather Report",
+        language: "Yoruba",
+        description: "A weather report. Transcribe what you hear.",
+        audioSrc: "https://example.com/audio/sample5.mp3"
+      },
+      { 
+        id: 6,
+        title: "Interview",
+        language: "Amharic",
+        description: "An interview with a local artist. Transcribe what you hear.",
+        audioSrc: "https://example.com/audio/sample6.mp3"
+      },
+      { 
+        id: 7,
+        title: "Recipe Instructions",
+        language: "Swahili",
+        description: "Instructions for a traditional recipe. Transcribe what you hear.",
+        audioSrc: "https://example.com/audio/sample7.mp3"
+      },
+      { 
+        id: 8,
+        title: "Public Announcement",
+        language: "Yoruba",
+        description: "A public announcement. Transcribe what you hear.",
+        audioSrc: "https://example.com/audio/sample8.mp3"
+      },
+      { 
+        id: 9,
+        title: "Phone Conversation",
+        language: "Amharic",
+        description: "A phone conversation between two people. Transcribe what you hear.",
+        audioSrc: "https://example.com/audio/sample9.mp3"
+      },
+      { 
+        id: 10,
+        title: "Radio Drama",
+        language: "Swahili",
+        description: "A short radio drama. Transcribe what you hear.",
+        audioSrc: "https://example.com/audio/sample10.mp3"
+      },
+    ],
+    // Additional batches would be added here
   ];
   
-  // Check if current task is complete when component loads or currentAudioIndex changes
-  useEffect(() => {
-    setIsCurrentTaskComplete(!!transcriptions[currentAudioIndex]);
-  }, [currentAudioIndex, transcriptions]);
-  
   const handleSaveTranscription = (text: string) => {
+    const taskId = getCurrentTask().id;
+    
     setTranscriptions(prev => ({
       ...prev,
-      [currentAudioIndex]: text
+      [taskId]: text
     }));
     
-    setIsCurrentTaskComplete(true);
-    
-    // Show success toast
     toast({
       title: "Transcription saved",
       description: "Your work has been saved successfully.",
     });
+
+    // Auto-advance to next task after successful save
+    setTimeout(() => {
+      handleNextTask();
+    }, 1000);
   };
   
-  const goToNextAudio = () => {
-    if (currentAudioIndex < audioSamples.length - 1) {
-      setCurrentAudioIndex(prev => prev + 1);
+  const handleSkipTask = () => {
+    toast({
+      title: "Task skipped",
+      description: "You can come back to this task later."
+    });
+    handleNextTask();
+  };
+  
+  const handleNextTask = () => {
+    const currentBatch = taskBatches[currentBatchIndex];
+    
+    if (currentTaskIndex < currentBatch.length - 1) {
+      // Move to next task within the batch
+      setCurrentTaskIndex(prev => prev + 1);
+    } else if (currentBatchIndex < taskBatches.length - 1) {
+      // Move to the next batch
+      setCurrentBatchIndex(prev => prev + 1);
+      setCurrentTaskIndex(0);
+      toast({
+        title: "New batch started",
+        description: "You've started a new batch of tasks."
+      });
+    } else {
+      // All batches completed
+      handleSubmitBatch();
     }
   };
   
-  const goToPrevAudio = () => {
-    if (currentAudioIndex > 0) {
-      setCurrentAudioIndex(prev => prev - 1);
-    }
-  };
-  
-  const handleSubmitAll = () => {
+  const handleSubmitBatch = () => {
     setIsSubmitting(true);
     
     // Here you would typically send the transcriptions to your server
     setTimeout(() => {
       setIsSubmitting(false);
       toast({
-        title: "Submission successful",
-        description: "Your transcriptions have been submitted. Thank you for your contribution!",
+        title: "Batch submitted",
+        description: "Your transcriptions have been submitted successfully. Thank you for your contribution!",
       });
-      navigate('/dashboard');
+      
+      // Check if there are more batches to complete
+      if (currentBatchIndex === taskBatches.length - 1) {
+        navigate('/dashboard');
+      } else {
+        // Move to the next batch
+        setCurrentBatchIndex(prev => prev + 1);
+        setCurrentTaskIndex(0);
+      }
     }, 1500);
   };
   
-  const allAudiosTranscribed = Object.keys(transcriptions).length === audioSamples.length;
+  const getCurrentTask = () => {
+    return taskBatches[currentBatchIndex][currentTaskIndex];
+  };
+  
+  const currentTask = getCurrentTask();
+  const tasksInCurrentBatch = taskBatches[currentBatchIndex].length;
+  const completedTasksInBatch = Object.keys(transcriptions).filter(id => 
+    taskBatches[currentBatchIndex].some(task => task.id.toString() === id)
+  ).length;
 
   return (
     <MainLayout>
@@ -101,20 +183,20 @@ const TranscribeTask: React.FC = () => {
           <h1 className="text-xl font-bold">Transcription Task</h1>
         </div>
         
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-3xl mx-auto">
           <Card className="border-none shadow-md">
             <CardHeader className="bg-gray-50 border-b pb-3">
               <div className="flex justify-between items-center">
                 <h2 className="text-lg font-medium">
-                  Audio {currentAudioIndex + 1} of {audioSamples.length}
+                  Batch {currentBatchIndex + 1} - Task {currentTaskIndex + 1} of {tasksInCurrentBatch}
                 </h2>
                 <span className="text-sm text-gray-500">
-                  Transcribed: {Object.keys(transcriptions).length} of {audioSamples.length}
+                  Transcribed: {completedTasksInBatch} of {tasksInCurrentBatch}
                 </span>
               </div>
               <progress 
-                value={Object.keys(transcriptions).length} 
-                max={audioSamples.length}
+                value={completedTasksInBatch} 
+                max={tasksInCurrentBatch}
                 className="w-full h-2"
               />
             </CardHeader>
@@ -123,20 +205,38 @@ const TranscribeTask: React.FC = () => {
               <div className="space-y-6">
                 <div>
                   <h3 className="text-lg font-medium mb-2">
-                    {audioSamples[currentAudioIndex].title}
+                    {currentTask.title}
                     <span className="ml-2 text-sm font-normal text-gray-500">
-                      ({audioSamples[currentAudioIndex].language})
+                      ({currentTask.language})
                     </span>
                   </h3>
                   <p className="text-gray-600 mb-4">
-                    {audioSamples[currentAudioIndex].description}
+                    {currentTask.description}
                   </p>
+                  
+                  <div className="grid grid-cols-5 gap-2 mb-4">
+                    {taskBatches[currentBatchIndex].map((_, idx) => (
+                      <button
+                        key={idx}
+                        className={`h-10 w-10 rounded-full flex items-center justify-center text-sm font-medium ${
+                          idx === currentTaskIndex
+                            ? "bg-primary text-primary-foreground"
+                            : transcriptions[taskBatches[currentBatchIndex][idx].id]
+                            ? "bg-green-100 text-green-700 border border-green-300"
+                            : "bg-gray-100 text-gray-700"
+                        }`}
+                        onClick={() => setCurrentTaskIndex(idx)}
+                      >
+                        {idx + 1}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 
                 <div className="py-4">
                   <TranscriptionEditor 
-                    initialText={transcriptions[currentAudioIndex] || ''}
-                    audioSrc={audioSamples[currentAudioIndex].audioSrc}
+                    initialText={transcriptions[currentTask.id] || ''}
+                    audioSrc={currentTask.audioSrc}
                     onSave={handleSaveTranscription}
                   />
                 </div>
@@ -144,31 +244,27 @@ const TranscribeTask: React.FC = () => {
                 <div className="flex justify-between pt-4 border-t">
                   <Button
                     variant="outline"
-                    onClick={goToPrevAudio}
-                    disabled={currentAudioIndex === 0}
+                    onClick={handleSkipTask}
+                    className="flex items-center"
                   >
-                    <ArrowLeft className="mr-2 h-4 w-4" />
-                    Previous
+                    <SkipForward className="mr-2 h-4 w-4" />
+                    Skip
                   </Button>
                   
-                  {currentAudioIndex < audioSamples.length - 1 ? (
-                    <Button
-                      onClick={goToNextAudio}
-                      disabled={!isCurrentTaskComplete}
-                    >
-                      Next
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  ) : (
-                    <Button
-                      className="bg-afri-green hover:bg-afri-green/90"
-                      onClick={handleSubmitAll}
-                      disabled={!allAudiosTranscribed || isSubmitting}
-                    >
-                      <Check className="mr-2 h-4 w-4" />
-                      {isSubmitting ? "Submitting..." : "Submit All"}
-                    </Button>
-                  )}
+                  <Button
+                    onClick={
+                      currentTaskIndex === tasksInCurrentBatch - 1 && currentBatchIndex === taskBatches.length - 1
+                        ? handleSubmitBatch
+                        : handleNextTask
+                    }
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? "Submitting..." : 
+                      currentTaskIndex === tasksInCurrentBatch - 1 && currentBatchIndex === taskBatches.length - 1
+                        ? "Submit All"
+                        : "Next"
+                    }
+                  </Button>
                 </div>
               </div>
             </CardContent>

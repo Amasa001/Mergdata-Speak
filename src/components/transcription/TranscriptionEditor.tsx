@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Save, RotateCcw, CheckCircle } from 'lucide-react';
+import { Save, RotateCcw, CheckCircle, Play, Pause } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface TranscriptionEditorProps {
@@ -87,34 +87,34 @@ export const TranscriptionEditor: React.FC<TranscriptionEditorProps> = ({
       {audioSrc && (
         <div className="p-4 bg-gray-50 rounded-md">
           <p className="text-sm font-medium mb-2">Audio Reference</p>
-          <audio
-            ref={audioRef}
-            src={audioSrc}
-            controls
-            className="w-full"
-            onEnded={() => setIsPlaying(false)}
-          />
-          <div className="mt-3 relative h-12 bg-gray-100 rounded-lg overflow-hidden">
-            <div className="absolute inset-0 flex items-center justify-center text-sm text-gray-500">
-              Audio waveform visualization
-            </div>
-            {/* Audio waveform visualization would be rendered here */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <svg width="100%" height="100%" viewBox="0 0 100 40" preserveAspectRatio="none">
-                <path
-                  d="M0,20 Q5,5 10,20 T20,20 T30,20 T40,20 T50,20 T60,20 T70,20 T80,20 T90,20 T100,20"
-                  fill="none"
-                  stroke="rgba(249, 115, 22, 0.5)"
-                  strokeWidth="2"
-                />
-                <path
-                  d="M0,20 Q5,35 10,20 T20,20 T30,20 T40,20 T50,20 T60,20 T70,20 T80,20 T90,20 T100,20"
-                  fill="none"
-                  stroke="rgba(249, 115, 22, 0.5)"
-                  strokeWidth="2"
-                />
-              </svg>
-            </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex items-center" 
+              onClick={togglePlayPause}
+            >
+              {isPlaying ? (
+                <>
+                  <Pause className="h-4 w-4 mr-1" />
+                  Pause
+                </>
+              ) : (
+                <>
+                  <Play className="h-4 w-4 mr-1" />
+                  Play
+                </>
+              )}
+            </Button>
+            <audio
+              ref={audioRef}
+              src={audioSrc}
+              onEnded={() => setIsPlaying(false)}
+              className="hidden"
+            />
+            <span className="text-sm text-gray-500">
+              {isPlaying ? "Playing audio..." : "Click play to listen"}
+            </span>
           </div>
         </div>
       )}

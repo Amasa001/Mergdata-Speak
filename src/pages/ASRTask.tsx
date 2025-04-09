@@ -4,136 +4,114 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { AudioRecorder } from '@/components/recording/AudioRecorder';
-import { ArrowLeft, ArrowRight, Check, Volume2, Play, Pause } from 'lucide-react';
+import { ArrowLeft, SkipForward, Mic, Check, XCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 
 const ASRTask: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [currentTaskIndex, setCurrentTaskIndex] = useState(0);
   const [recordedAudios, setRecordedAudios] = useState<Record<number, Blob>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isPlaying, setIsPlaying] = useState<Record<number, boolean>>({});
+  const [currentBatchIndex, setCurrentBatchIndex] = useState(0);
   const audioRefs = useRef<Record<number, HTMLAudioElement | null>>({});
-  const canvasRefs = useRef<Record<number, HTMLCanvasElement | null>>({});
 
-  // Mock image prompts for ASR task
-  const imageSamples = [
-    { id: 1, title: "Market Scene", description: "Describe this bustling African marketplace in your language." },
-    { id: 2, title: "Family Gathering", description: "Talk about what you see in this family celebration image." },
-    { id: 3, title: "Rural Landscape", description: "Describe this rural village scene in your language." },
+  // Mock sentences for ASR task (would come from API in production)
+  const taskBatches = [
+    [
+      { id: 1, text: "He has been working in comics ever since.", language: "English" },
+      { id: 2, text: "The weather is quite pleasant today.", language: "English" },
+      { id: 3, text: "She went to the market to buy some fruits.", language: "English" },
+      { id: 4, text: "Children are playing in the park nearby.", language: "English" },
+      { id: 5, text: "The train will arrive at the station soon.", language: "English" },
+      { id: 6, text: "I need to finish this assignment by tomorrow.", language: "English" },
+      { id: 7, text: "He reads at least one book every week.", language: "English" },
+      { id: 8, text: "They are planning to visit their grandparents.", language: "English" },
+      { id: 9, text: "The concert was scheduled for next Friday.", language: "English" },
+      { id: 10, text: "We should conserve water for future generations.", language: "English" },
+    ],
+    // Additional task batches would be added here
   ];
   
   const handleRecordingComplete = (audioBlob: Blob) => {
+    const taskId = getCurrentTask().id;
+    
     setRecordedAudios(prev => ({
       ...prev,
-      [currentImageIndex]: audioBlob
+      [taskId]: audioBlob
     }));
     
     toast({
       title: "Recording saved",
-      description: "Your ASR recording has been saved successfully."
+      description: "Your recording has been saved successfully."
     });
+
+    // Auto-advance to next task after successful recording
+    setTimeout(() => {
+      handleNextTask();
+    }, 1500);
   };
   
-  const goToNextImage = () => {
-    if (currentImageIndex < imageSamples.length - 1) {
-      setCurrentImageIndex(prev => prev + 1);
+  const handleSkipTask = () => {
+    toast({
+      title: "Task skipped",
+      description: "You can come back to this task later."
+    });
+    handleNextTask();
+  };
+  
+  const handleNextTask = () => {
+    const currentBatch = taskBatches[currentBatchIndex];
+    
+    if (currentTaskIndex < currentBatch.length - 1) {
+      // Move to next task within the batch
+      setCurrentTaskIndex(prev => prev + 1);
+    } else if (currentBatchIndex < taskBatches.length - 1) {
+      // Move to the next batch
+      setCurrentBatchIndex(prev => prev + 1);
+      setCurrentTaskIndex(0);
+      toast({
+        title: "New batch started",
+        description: "You've started a new batch of tasks."
+      });
+    } else {
+      // All batches completed
+      handleSubmitBatch();
     }
   };
   
-  const goToPrevImage = () => {
-    if (currentImageIndex > 0) {
-      setCurrentImageIndex(prev => prev - 1);
-    }
-  };
-  
-  const handleSubmitAll = () => {
+  const handleSubmitBatch = () => {
     setIsSubmitting(true);
     
     // Here you would typically send the recorded audio files to your server
     setTimeout(() => {
       setIsSubmitting(false);
       toast({
-        title: "Submission successful",
-        description: "Your ASR recordings have been submitted. Thank you for your contribution!",
+        title: "Batch submitted",
+        description: "Your recordings have been submitted successfully. Thank you for your contribution!",
       });
-      navigate('/dashboard');
+      
+      // Check if there are more batches to complete
+      if (currentBatchIndex === taskBatches.length - 1) {
+        navigate('/dashboard');
+      } else {
+        // Move to the next batch
+        setCurrentBatchIndex(prev => prev + 1);
+        setCurrentTaskIndex(0);
+      }
     }, 1500);
   };
   
-  const togglePlayback = (index: number) => {
-    if (!audioRefs.current[index]) return;
-    
-    const audio = audioRefs.current[index];
-    
-    if (isPlaying[index]) {
-      audio?.pause();
-    } else {
-      // Pause any currently playing audio
-      Object.keys(isPlaying).forEach(key => {
-        const idx = parseInt(key);
-        if (isPlaying[idx] && audioRefs.current[idx]) {
-          audioRefs.current[idx]?.pause();
-          setIsPlaying(prev => ({ ...prev, [idx]: false }));
-        }
-      });
-      
-      audio?.play().catch(err => console.error("Error playing audio:", err));
-    }
-    
-    setIsPlaying(prev => ({ ...prev, [index]: !prev[index] }));
+  const getCurrentTask = () => {
+    return taskBatches[currentBatchIndex][currentTaskIndex];
   };
   
-  // Draw waveform for recorded audio
-  const drawWaveform = (canvas: HTMLCanvasElement) => {
-    if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Set up wave properties
-    const width = canvas.width;
-    const height = canvas.height;
-    const centerY = height / 2;
-    const segmentWidth = 2;
-    const gap = 1;
-    const segments = Math.floor(width / (segmentWidth + gap));
-    
-    // Draw waveform
-    ctx.fillStyle = 'rgba(249, 115, 22, 0.7)';
-    
-    for (let i = 0; i < segments; i++) {
-      // Create a varying height for visualization
-      const amplitude = Math.random() * (height / 2 - 4) + 4;
-      
-      // Draw a vertical bar
-      ctx.fillRect(
-        i * (segmentWidth + gap),
-        centerY - amplitude / 2,
-        segmentWidth,
-        amplitude
-      );
-    }
-  };
-  
-  // Draw waveforms when recordings change
-  useEffect(() => {
-    Object.keys(recordedAudios).forEach(index => {
-      const idx = parseInt(index);
-      const canvas = canvasRefs.current[idx];
-      if (canvas) {
-        drawWaveform(canvas);
-      }
-    });
-  }, [recordedAudios]);
-  
-  const isCurrentImageRecorded = !!recordedAudios[currentImageIndex];
-  const allImagesRecorded = Object.keys(recordedAudios).length === imageSamples.length;
+  const currentTask = getCurrentTask();
+  const tasksInCurrentBatch = taskBatches[currentBatchIndex].length;
+  const completedTasksInBatch = Object.keys(recordedAudios).filter(id => 
+    taskBatches[currentBatchIndex].some(task => task.id.toString() === id)
+  ).length;
 
   return (
     <MainLayout>
@@ -146,94 +124,63 @@ const ASRTask: React.FC = () => {
           <h1 className="text-xl font-bold">ASR Recording Task</h1>
         </div>
         
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-3xl mx-auto">
           <Card className="border-none shadow-md">
             <CardHeader className="bg-gray-50 border-b pb-3">
               <div className="flex justify-between items-center">
                 <h2 className="text-lg font-medium">
-                  Image {currentImageIndex + 1} of {imageSamples.length}
+                  Batch {currentBatchIndex + 1} - Task {currentTaskIndex + 1} of {tasksInCurrentBatch}
                 </h2>
                 <span className="text-sm text-gray-500">
-                  Recorded: {Object.keys(recordedAudios).length} of {imageSamples.length}
+                  Recorded: {completedTasksInBatch} of {tasksInCurrentBatch}
                 </span>
               </div>
               <progress 
-                value={Object.keys(recordedAudios).length} 
-                max={imageSamples.length}
+                value={completedTasksInBatch} 
+                max={tasksInCurrentBatch}
                 className="w-full h-2"
               />
             </CardHeader>
             
             <CardContent className="p-6">
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-lg font-medium mb-2">
-                    {imageSamples[currentImageIndex].title}
-                  </h3>
-                  <p className="text-gray-600 mb-4">
-                    {imageSamples[currentImageIndex].description}
-                  </p>
-                  
-                  <div className="bg-gray-100 rounded-lg aspect-video flex items-center justify-center mb-6">
-                    {/* This would be an actual image in a real app */}
-                    <div className="text-gray-400">
-                      Image Sample {currentImageIndex + 1}
-                    </div>
+              <div className="space-y-10">
+                <div className="text-center">
+                  <p className="text-sm text-gray-500 mb-2">Click the microphone then read the sentence aloud</p>
+                  <div className="p-10 bg-white rounded-lg border mb-4 shadow-sm">
+                    <h3 className="text-2xl font-medium text-center">
+                      {currentTask.text}
+                    </h3>
                   </div>
                   
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <h4 className="text-sm font-medium text-gray-700 mb-3">
-                      Instructions:
-                    </h4>
-                    <ul className="text-sm space-y-2 text-gray-600 list-disc pl-4">
-                      <li>Look at the image and prepare what you want to say</li>
-                      <li>Click the record button and start speaking</li>
-                      <li>Speak clearly in your selected language</li>
-                      <li>You have 15 seconds maximum for your recording</li>
-                      <li>Click the stop button when finished</li>
-                    </ul>
+                  <div className="grid grid-cols-5 gap-2 mt-6">
+                    {taskBatches[currentBatchIndex].map((_, idx) => (
+                      <button
+                        key={idx}
+                        className={`h-10 w-10 rounded-full flex items-center justify-center text-sm font-medium ${
+                          idx === currentTaskIndex
+                            ? "bg-primary text-primary-foreground"
+                            : recordedAudios[taskBatches[currentBatchIndex][idx].id]
+                            ? "bg-green-100 text-green-700 border border-green-300"
+                            : "bg-gray-100 text-gray-700"
+                        }`}
+                        onClick={() => setCurrentTaskIndex(idx)}
+                      >
+                        {idx + 1}
+                      </button>
+                    ))}
                   </div>
                 </div>
                 
-                <div className="py-4">
+                <div className="flex flex-col items-center">
                   <AudioRecorder 
-                    maxDuration={15}
+                    maxDuration={10}
                     onRecordingComplete={handleRecordingComplete}
                   />
-                  
-                  {isCurrentImageRecorded && (
-                    <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                      <div className="flex justify-between items-center mb-2">
-                        <h5 className="text-sm font-medium text-gray-700">Your Recording</h5>
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          onClick={() => togglePlayback(currentImageIndex)}
-                        >
-                          {isPlaying[currentImageIndex] ? (
-                            <>
-                              <Pause className="h-3 w-3 mr-1" /> Pause
-                            </>
-                          ) : (
-                            <>
-                              <Play className="h-3 w-3 mr-1" /> Play
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                      
-                      <div className="relative h-12 bg-gray-200 rounded-lg overflow-hidden">
-                        <canvas 
-                          ref={el => canvasRefs.current[currentImageIndex] = el}
-                          className="w-full h-full"
-                        />
-                        <audio 
-                          ref={el => audioRefs.current[currentImageIndex] = el}
-                          src={recordedAudios[currentImageIndex] ? URL.createObjectURL(recordedAudios[currentImageIndex]) : ''}
-                          onEnded={() => setIsPlaying(prev => ({ ...prev, [currentImageIndex]: false }))}
-                          className="hidden"
-                        />
-                      </div>
+
+                  {recordedAudios[currentTask.id] && (
+                    <div className="mt-4 text-center">
+                      <Check className="h-6 w-6 text-green-500 mx-auto mb-2" />
+                      <p className="text-sm text-green-700">Recording saved!</p>
                     </div>
                   )}
                 </div>
@@ -241,31 +188,27 @@ const ASRTask: React.FC = () => {
                 <div className="flex justify-between pt-4 border-t">
                   <Button
                     variant="outline"
-                    onClick={goToPrevImage}
-                    disabled={currentImageIndex === 0}
+                    onClick={handleSkipTask}
+                    className="flex items-center"
                   >
-                    <ArrowLeft className="mr-2 h-4 w-4" />
-                    Previous
+                    <SkipForward className="mr-2 h-4 w-4" />
+                    Skip
                   </Button>
                   
-                  {currentImageIndex < imageSamples.length - 1 ? (
-                    <Button
-                      onClick={goToNextImage}
-                      disabled={!isCurrentImageRecorded}
-                    >
-                      Next
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  ) : (
-                    <Button
-                      className="bg-afri-green hover:bg-afri-green/90"
-                      onClick={handleSubmitAll}
-                      disabled={!allImagesRecorded || isSubmitting}
-                    >
-                      <Check className="mr-2 h-4 w-4" />
-                      {isSubmitting ? "Submitting..." : "Submit All"}
-                    </Button>
-                  )}
+                  <Button
+                    onClick={
+                      currentTaskIndex === tasksInCurrentBatch - 1 && currentBatchIndex === taskBatches.length - 1
+                        ? handleSubmitBatch
+                        : handleNextTask
+                    }
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? "Submitting..." : 
+                      currentTaskIndex === tasksInCurrentBatch - 1 && currentBatchIndex === taskBatches.length - 1
+                        ? "Submit All"
+                        : "Next"
+                    }
+                  </Button>
                 </div>
               </div>
             </CardContent>
