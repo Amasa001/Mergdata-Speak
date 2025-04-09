@@ -92,11 +92,11 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
             {languages.map((language) => (
               <CommandItem
                 key={language.value}
-                value={language.value}
                 onSelect={() => {
                   onSelectLanguage(language.value);
                   setOpen(false);
                 }}
+                value={language.value}
               >
                 <Check
                   className={cn(
