@@ -8,16 +8,24 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { RoleSelector } from '@/components/auth/RoleSelector';
 import { LanguageSelector } from '@/components/auth/LanguageSelector';
 import { Link, useNavigate } from 'react-router-dom';
+import { createClient } from '@supabase/supabase-js';
+import { toast } from 'sonner';
+
+// Initialize Supabase client
+const supabaseUrl = 'https://your-project-url.supabase.co';
+const supabaseKey = 'your-anon-key';
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 const Register: React.FC = () => {
   const navigate = useNavigate();
   const [step, setStep] = useState<number>(1);
+  const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
     password: '',
     confirmPassword: '',
-    roles: [] as string[],
+    role: '',
     languages: [] as string[],
   });
   
@@ -27,15 +35,7 @@ const Register: React.FC = () => {
   };
   
   const handleRoleSelect = (roleId: string) => {
-    setFormData(prev => {
-      if (prev.roles.includes(roleId)) {
-        // Remove the role if already selected
-        return { ...prev, roles: prev.roles.filter(r => r !== roleId) };
-      } else {
-        // Add the role if not already selected
-        return { ...prev, roles: [...prev.roles, roleId] };
-      }
-    });
+    setFormData(prev => ({ ...prev, role: roleId }));
   };
   
   const handleLanguageSelect = (language: string) => {
@@ -58,22 +58,66 @@ const Register: React.FC = () => {
     setStep(prev => prev - 1);
   };
   
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Here you would handle form submission, API calls etc.
-    console.log('Form submitted:', formData);
-    navigate('/dashboard');
+    
+    if (formData.password !== formData.confirmPassword) {
+      toast.error("Passwords don't match");
+      return;
+    }
+    
+    setIsLoading(true);
+    
+    try {
+      // 1. Register user with Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+        options: {
+          data: {
+            full_name: formData.fullName,
+          }
+        }
+      });
+      
+      if (authError) throw authError;
+      
+      // 2. Store additional user data in the profiles table
+      if (authData.user) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert([
+            { 
+              id: authData.user.id, 
+              full_name: formData.fullName,
+              role: formData.role,
+              languages: formData.languages,
+              created_at: new Date().toISOString(),
+            }
+          ]);
+          
+        if (profileError) throw profileError;
+        
+        toast.success("Account created successfully!");
+        navigate('/dashboard');
+      }
+    } catch (error) {
+      console.error('Registration error:', error);
+      toast.error("Failed to create account. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
   };
   
   return (
     <MainLayout>
       <div className="min-h-screen py-12 px-4">
-        <div className="container mx-auto max-w-xl"> {/* Increased max-width */}
+        <div className="container mx-auto max-w-2xl"> {/* Increased max-width */}
           <Card className="shadow-lg border-none">
             <CardHeader>
               <CardTitle className="text-2xl">Create Your Account</CardTitle>
               <CardDescription>
-                Step {step} of 3: {step === 1 ? 'Basic Information' : step === 2 ? 'Choose Your Roles' : 'Select Languages'}
+                Step {step} of 3: {step === 1 ? 'Basic Information' : step === 2 ? 'Choose Your Role' : 'Select Languages'}
               </CardDescription>
             </CardHeader>
             
@@ -137,11 +181,11 @@ const Register: React.FC = () => {
                 {step === 2 && (
                   <div className="space-y-4">
                     <p className="text-sm text-gray-500 mb-4">
-                      Select one or more roles you'd like to contribute with:
+                      Select the role you'd like to contribute with:
                     </p>
                     
                     <RoleSelector 
-                      selectedRoles={formData.roles}
+                      selectedRole={formData.role}
                       onSelectRole={handleRoleSelect}
                     />
                   </div>
@@ -181,7 +225,7 @@ const Register: React.FC = () => {
                     className="ml-auto"
                     onClick={handleNextStep}
                     disabled={(step === 1 && (!formData.fullName || !formData.email || !formData.password || !formData.confirmPassword)) ||
-                              (step === 2 && formData.roles.length === 0)}
+                              (step === 2 && !formData.role)}
                   >
                     Next
                   </Button>
@@ -189,9 +233,9 @@ const Register: React.FC = () => {
                   <Button 
                     className="ml-auto" 
                     onClick={handleSubmit}
-                    disabled={formData.languages.length === 0}
+                    disabled={formData.languages.length === 0 || isLoading}
                   >
-                    Create Account
+                    {isLoading ? "Creating Account..." : "Create Account"}
                   </Button>
                 )}
               </div>

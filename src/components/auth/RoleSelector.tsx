@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Mic, FileText, Headphones, CheckCircle } from 'lucide-react';
 
 interface RoleOption {
@@ -13,12 +13,12 @@ interface RoleOption {
 }
 
 interface RoleSelectorProps {
-  selectedRoles: string[];
+  selectedRole: string;
   onSelectRole: (roleId: string) => void;
 }
 
 export const RoleSelector: React.FC<RoleSelectorProps> = ({ 
-  selectedRoles, 
+  selectedRole, 
   onSelectRole 
 }) => {
   const roleOptions: RoleOption[] = [
@@ -53,40 +53,36 @@ export const RoleSelector: React.FC<RoleSelectorProps> = ({
   ];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <RadioGroup value={selectedRole} onValueChange={onSelectRole} className="grid grid-cols-1 md:grid-cols-2 gap-4">
       {roleOptions.map((role) => (
-        <Card 
-          key={role.id}
-          className={`cursor-pointer transition-all ${
-            selectedRoles.includes(role.id) 
-              ? 'ring-2 ring-afri-orange shadow-md' 
-              : 'hover:shadow'
-          }`}
-          onClick={() => onSelectRole(role.id)}
-        >
-          <CardContent className="p-4">
-            <div className="flex items-start space-x-4">
-              <div className={`p-2 rounded-full ${role.color}`}>
-                {role.icon}
+        <div key={role.id} className="relative">
+          <RadioGroupItem 
+            value={role.id} 
+            id={role.id} 
+            className="sr-only"
+          />
+          <Card 
+            className={`cursor-pointer transition-all ${
+              selectedRole === role.id 
+                ? 'ring-2 ring-afri-orange shadow-md' 
+                : 'hover:shadow'
+            }`}
+            onClick={() => onSelectRole(role.id)}
+          >
+            <CardContent className="p-4">
+              <div className="flex items-start space-x-4">
+                <div className={`p-2 rounded-full ${role.color}`}>
+                  {role.icon}
+                </div>
+                <div className="flex-grow">
+                  <h3 className="font-medium">{role.title}</h3>
+                  <p className="text-sm text-gray-500">{role.description}</p>
+                </div>
               </div>
-              <div className="flex-grow">
-                <h3 className="font-medium">{role.title}</h3>
-                <p className="text-sm text-gray-500">{role.description}</p>
-              </div>
-              <Checkbox 
-                checked={selectedRoles.includes(role.id)}
-                // Remove the onCheckedChange prop to prevent the infinite loop
-                // The click handler on the Card will handle the selection instead
-                className="mt-1"
-                onClick={(e) => {
-                  // Stop propagation to prevent double-firing with the Card's onClick
-                  e.stopPropagation();
-                }}
-              />
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
       ))}
-    </div>
+    </RadioGroup>
   );
 };
