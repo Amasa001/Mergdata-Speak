@@ -112,7 +112,7 @@ const Register: React.FC = () => {
   return (
     <MainLayout>
       <div className="min-h-screen py-12 px-4">
-        <div className="container mx-auto max-w-2xl"> {/* Increased max-width */}
+        <div className="container mx-auto max-w-2xl">
           <Card className="shadow-lg border-none">
             <CardHeader>
               <CardTitle className="text-2xl">Create Your Account</CardTitle>
@@ -222,7 +222,7 @@ const Register: React.FC = () => {
                 )}
                 {step < 3 ? (
                   <Button 
-                    className="ml-auto"
+                    className={step === 1 ? "w-full" : "ml-auto"}
                     onClick={handleNextStep}
                     disabled={(step === 1 && (!formData.fullName || !formData.email || !formData.password || !formData.confirmPassword)) ||
                               (step === 2 && !formData.role)}

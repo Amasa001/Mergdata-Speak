@@ -59,28 +59,29 @@ export const RoleSelector: React.FC<RoleSelectorProps> = ({
           <RadioGroupItem 
             value={role.id} 
             id={role.id} 
-            className="sr-only"
+            className="peer sr-only"
           />
-          <Card 
-            className={`cursor-pointer transition-all ${
-              selectedRole === role.id 
-                ? 'ring-2 ring-afri-orange shadow-md' 
-                : 'hover:shadow'
-            }`}
-            onClick={() => onSelectRole(role.id)}
-          >
-            <CardContent className="p-4">
-              <div className="flex items-start space-x-4">
-                <div className={`p-2 rounded-full ${role.color}`}>
-                  {role.icon}
+          <label htmlFor={role.id}>
+            <Card 
+              className={`cursor-pointer transition-all ${
+                selectedRole === role.id 
+                  ? 'ring-2 ring-afri-orange shadow-md' 
+                  : 'hover:shadow'
+              }`}
+            >
+              <CardContent className="p-4">
+                <div className="flex items-start space-x-4">
+                  <div className={`p-2 rounded-full ${role.color}`}>
+                    {role.icon}
+                  </div>
+                  <div className="flex-grow">
+                    <h3 className="font-medium">{role.title}</h3>
+                    <p className="text-sm text-gray-500">{role.description}</p>
+                  </div>
                 </div>
-                <div className="flex-grow">
-                  <h3 className="font-medium">{role.title}</h3>
-                  <p className="text-sm text-gray-500">{role.description}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </label>
         </div>
       ))}
     </RadioGroup>

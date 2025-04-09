@@ -65,7 +65,6 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
 
   const handleItemClick = (value: string) => {
     onSelectLanguage(value);
-    // Don't close the popover to allow multiple selections
   };
 
   return (
@@ -107,14 +106,13 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
                     key={language.value}
                     value={language.value}
                     onSelect={() => handleItemClick(language.value)}
-                    className="flex items-center"
                   >
                     <div className="flex items-center flex-1 space-x-2">
                       <Checkbox 
                         checked={selectedLanguages.includes(language.value)}
-                        // Remove the direct onCheckedChange to prevent infinite loops
-                        // We'll use the CommandItem's onSelect instead
+                        id={`lang-${language.value}`}
                         className="mr-2"
+                        onCheckedChange={() => {}}
                       />
                       <span>{language.label}</span>
                     </div>
@@ -123,12 +121,12 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
               </CommandGroup>
             ))}
           </CommandList>
+          <div className="flex justify-end p-2 border-t">
+            <Button size="sm" onClick={() => setOpen(false)}>
+              Done
+            </Button>
+          </div>
         </Command>
-        <div className="flex justify-end p-2 border-t">
-          <Button size="sm" onClick={() => setOpen(false)}>
-            Done
-          </Button>
-        </div>
       </PopoverContent>
     </Popover>
   );
