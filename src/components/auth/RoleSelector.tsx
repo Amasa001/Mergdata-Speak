@@ -52,10 +52,6 @@ export const RoleSelector: React.FC<RoleSelectorProps> = ({
     }
   ];
 
-  const handleRoleToggle = (roleId: string) => {
-    onSelectRole(roleId);
-  };
-
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       {roleOptions.map((role) => (
@@ -66,7 +62,7 @@ export const RoleSelector: React.FC<RoleSelectorProps> = ({
               ? 'ring-2 ring-afri-orange shadow-md' 
               : 'hover:shadow'
           }`}
-          onClick={() => handleRoleToggle(role.id)}
+          onClick={() => onSelectRole(role.id)}
         >
           <CardContent className="p-4">
             <div className="flex items-start space-x-4">
@@ -79,8 +75,13 @@ export const RoleSelector: React.FC<RoleSelectorProps> = ({
               </div>
               <Checkbox 
                 checked={selectedRoles.includes(role.id)}
-                onCheckedChange={() => handleRoleToggle(role.id)}
+                // Remove the onCheckedChange prop to prevent the infinite loop
+                // The click handler on the Card will handle the selection instead
                 className="mt-1"
+                onClick={(e) => {
+                  // Stop propagation to prevent double-firing with the Card's onClick
+                  e.stopPropagation();
+                }}
               />
             </div>
           </CardContent>

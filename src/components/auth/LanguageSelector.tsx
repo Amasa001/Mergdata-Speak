@@ -1,5 +1,5 @@
+
 import React from 'react';
-import { Check } from 'lucide-react';
 import {
   Command,
   CommandEmpty,
@@ -14,7 +14,6 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
 import { Checkbox } from '@/components/ui/checkbox';
 
 interface LanguageSelectorProps {
@@ -64,6 +63,11 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
       : `${selectedLanguages.length} languages selected`
     : "Select languages...";
 
+  const handleItemClick = (value: string) => {
+    onSelectLanguage(value);
+    // Don't close the popover to allow multiple selections
+  };
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -101,16 +105,15 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
                 {languages.map((language) => (
                   <CommandItem
                     key={language.value}
-                    onSelect={() => {
-                      onSelectLanguage(language.value);
-                      // Keep open for multiple selection
-                    }}
+                    value={language.value}
+                    onSelect={() => handleItemClick(language.value)}
                     className="flex items-center"
                   >
                     <div className="flex items-center flex-1 space-x-2">
                       <Checkbox 
                         checked={selectedLanguages.includes(language.value)}
-                        onCheckedChange={() => onSelectLanguage(language.value)}
+                        // Remove the direct onCheckedChange to prevent infinite loops
+                        // We'll use the CommandItem's onSelect instead
                         className="mr-2"
                       />
                       <span>{language.label}</span>
