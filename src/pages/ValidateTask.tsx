@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft, SkipForward, Check, ThumbsUp, ThumbsDown, Play, Pause } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
+import { TranscriptionEditor } from '@/components/transcription/TranscriptionEditor';
 
 const ValidateTask: React.FC = () => {
   const navigate = useNavigate();
@@ -17,6 +17,8 @@ const ValidateTask: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPlaying, setIsPlaying] = useState<Record<number, boolean>>({});
   const [activeTab, setActiveTab] = useState('asr');
+  const [editedTranscription, setEditedTranscription] = useState("");
+  const [transcriptionSaved, setTranscriptionSaved] = useState(false);
   const audioRefs = React.useRef<Record<string, HTMLAudioElement | null>>({});
 
   // Mock ASR validation tasks in batches
@@ -93,7 +95,6 @@ const ValidateTask: React.FC = () => {
         userInfo: "User ID: 9512"
       },
     ],
-    // Additional batches would be added here
   ];
 
   // Mock TTS validation tasks in batches
@@ -113,9 +114,63 @@ const ValidateTask: React.FC = () => {
         language: "English",
         userInfo: "User ID: 7890"
       },
-      // Add more TTS tasks to complete the batch of 10
+      {
+        id: 203,
+        text: "The seminar will begin at nine o'clock tomorrow",
+        recordingUrl: "https://example.com/audio/validation/tts3.mp3",
+        language: "English",
+        userInfo: "User ID: 5678"
+      },
+      {
+        id: 204,
+        text: "Please contact us if you have any questions",
+        recordingUrl: "https://example.com/audio/validation/tts4.mp3",
+        language: "Swahili",
+        userInfo: "User ID: 1234"
+      },
+      {
+        id: 205,
+        text: "All participants should register before attending",
+        recordingUrl: "https://example.com/audio/validation/tts5.mp3",
+        language: "English",
+        userInfo: "User ID: 9012"
+      },
+      {
+        id: 206,
+        text: "The meeting will be held in the main conference room",
+        recordingUrl: "https://example.com/audio/validation/tts6.mp3",
+        language: "English",
+        userInfo: "User ID: 3456"
+      },
+      {
+        id: 207,
+        text: "Please submit your reports by the end of the week",
+        recordingUrl: "https://example.com/audio/validation/tts7.mp3",
+        language: "English",
+        userInfo: "User ID: 7890"
+      },
+      {
+        id: 208,
+        text: "The training session has been rescheduled to next month",
+        recordingUrl: "https://example.com/audio/validation/tts8.mp3",
+        language: "Yoruba",
+        userInfo: "User ID: 2345"
+      },
+      {
+        id: 209,
+        text: "We appreciate your patience during this transition period",
+        recordingUrl: "https://example.com/audio/validation/tts9.mp3",
+        language: "English",
+        userInfo: "User ID: 6789"
+      },
+      {
+        id: 210,
+        text: "Please review the attached document before our meeting",
+        recordingUrl: "https://example.com/audio/validation/tts10.mp3",
+        language: "English",
+        userInfo: "User ID: 0123"
+      }
     ],
-    // Additional batches would be added here
   ];
 
   // Mock transcription validation tasks in batches
@@ -135,9 +190,63 @@ const ValidateTask: React.FC = () => {
         language: "English",
         userInfo: "User ID: 8901"
       },
-      // Add more transcription tasks to complete the batch of 10
+      {
+        id: 303,
+        audioUrl: "https://example.com/audio/validation/trans3.mp3",
+        transcription: "The children are playing in the park near the river.",
+        language: "English",
+        userInfo: "User ID: 2345"
+      },
+      {
+        id: 304,
+        audioUrl: "https://example.com/audio/validation/trans4.mp3",
+        transcription: "He studies mathematics and physics at the university.",
+        language: "Twi",
+        userInfo: "User ID: 6789"
+      },
+      {
+        id: 305,
+        audioUrl: "https://example.com/audio/validation/trans5.mp3",
+        transcription: "They will travel to the capital city next week for the conference.",
+        language: "English",
+        userInfo: "User ID: 0123"
+      },
+      {
+        id: 306,
+        audioUrl: "https://example.com/audio/validation/trans6.mp3",
+        transcription: "The concert was postponed because of the heavy rain.",
+        language: "English",
+        userInfo: "User ID: 4567"
+      },
+      {
+        id: 307,
+        audioUrl: "https://example.com/audio/validation/trans7.mp3",
+        transcription: "She reads many books during her summer vacation.",
+        language: "Ewe",
+        userInfo: "User ID: 8901"
+      },
+      {
+        id: 308,
+        audioUrl: "https://example.com/audio/validation/trans8.mp3",
+        transcription: "The farmers planted corn and beans in their fields this season.",
+        language: "English",
+        userInfo: "User ID: 2345"
+      },
+      {
+        id: 309,
+        audioUrl: "https://example.com/audio/validation/trans9.mp3",
+        transcription: "The committee meets every month to discuss new projects.",
+        language: "English",
+        userInfo: "User ID: 6789"
+      },
+      {
+        id: 310,
+        audioUrl: "https://example.com/audio/validation/trans10.mp3",
+        transcription: "He learned to play the traditional drum from his grandfather.",
+        language: "Dioula",
+        userInfo: "User ID: 0123"
+      }
     ],
-    // Additional batches would be added here
   ];
 
   const getTaskBatches = () => {
@@ -164,7 +273,6 @@ const ValidateTask: React.FC = () => {
       description: isValid ? "The content has been approved." : "The content has been rejected.",
     });
 
-    // Auto-advance to next task after validation
     setTimeout(() => {
       handleNextTask();
     }, 1000);
@@ -182,10 +290,8 @@ const ValidateTask: React.FC = () => {
     const currentBatch = getTaskBatches()[currentBatchIndex];
     
     if (currentTaskIndex < currentBatch.length - 1) {
-      // Move to next task within the batch
       setCurrentTaskIndex(prev => prev + 1);
     } else if (currentBatchIndex < getTaskBatches().length - 1) {
-      // Move to the next batch
       setCurrentBatchIndex(prev => prev + 1);
       setCurrentTaskIndex(0);
       toast({
@@ -193,7 +299,6 @@ const ValidateTask: React.FC = () => {
         description: "You've started a new batch of tasks."
       });
     } else {
-      // All batches completed
       handleSubmitBatch();
     }
   };
@@ -201,7 +306,6 @@ const ValidateTask: React.FC = () => {
   const handleSubmitBatch = () => {
     setIsSubmitting(true);
     
-    // Here you would typically send the validations to your server
     setTimeout(() => {
       setIsSubmitting(false);
       toast({
@@ -209,11 +313,9 @@ const ValidateTask: React.FC = () => {
         description: "Your validations have been submitted successfully. Thank you for your contribution!",
       });
       
-      // Check if there are more batches to complete
       if (currentBatchIndex === getTaskBatches().length - 1) {
         navigate('/dashboard');
       } else {
-        // Move to the next batch
         setCurrentBatchIndex(prev => prev + 1);
         setCurrentTaskIndex(0);
       }
@@ -233,7 +335,6 @@ const ValidateTask: React.FC = () => {
     if (isPlaying[taskId]) {
       audio?.pause();
     } else {
-      // Pause any currently playing audio
       Object.keys(isPlaying).forEach(key => {
         if (isPlaying[parseInt(key)] && audioRefs.current[`${activeTab}-${key}`]) {
           audioRefs.current[`${activeTab}-${key}`]?.pause();
@@ -253,7 +354,9 @@ const ValidateTask: React.FC = () => {
     setActiveTab(tab);
     setCurrentTaskIndex(0);
     setCurrentBatchIndex(0);
-    // Pause any playing audio when switching tabs
+    setEditedTranscription("");
+    setTranscriptionSaved(false);
+
     Object.keys(isPlaying).forEach(key => {
       if (isPlaying[parseInt(key)]) {
         setIsPlaying(prev => ({
@@ -262,6 +365,27 @@ const ValidateTask: React.FC = () => {
         }));
       }
     });
+  };
+
+  const handleSaveTranscription = (text: string) => {
+    setEditedTranscription(text);
+    setTranscriptionSaved(true);
+    
+    toast({
+      title: "Transcription saved",
+      description: "Your edited transcription has been saved."
+    });
+  };
+
+  const handleTTSQualityRating = (rating: number, taskId: number) => {
+    toast({
+      title: `Quality rated: ${rating}/5`,
+      description: "Your rating has been recorded."
+    });
+    
+    setTimeout(() => {
+      handleNextTask();
+    }, 1000);
   };
   
   const currentTask = getCurrentTask();
@@ -409,15 +533,97 @@ const ValidateTask: React.FC = () => {
                 </TabsContent>
                 
                 <TabsContent value="tts" className="mt-0">
-                  {/* Similar structure to ASR but with TTS specific content */}
                   <div className="space-y-6">
                     <div className="p-5 bg-white rounded-lg border mb-4 shadow-sm">
                       <h3 className="font-medium text-lg mb-3">Text Passage:</h3>
                       <p className="text-xl">{(currentTask as typeof ttsTaskBatches[0][0]).text}</p>
                     </div>
                     
-                    {/* Add remaining TTS validation interface */}
-                    <p className="text-center py-6">TTS validation functionality details would be implemented here</p>
+                    <div className="bg-gray-50 p-4 rounded-md">
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="font-medium">Voice Recording</h3>
+                        <span className="text-sm text-gray-500">{(currentTask as typeof ttsTaskBatches[0][0]).language}</span>
+                      </div>
+                      
+                      <div className="flex items-center gap-3 mb-4">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex items-center"
+                          onClick={() => togglePlayback(currentTask.id.toString())}
+                        >
+                          {isPlaying[currentTask.id] ? (
+                            <>
+                              <Pause className="h-4 w-4 mr-1" />
+                              Pause
+                            </>
+                          ) : (
+                            <>
+                              <Play className="h-4 w-4 mr-1" />
+                              Play
+                            </>
+                          )}
+                        </Button>
+                        <audio 
+                          ref={el => audioRefs.current[`tts-${currentTask.id}`] = el}
+                          src={(currentTask as typeof ttsTaskBatches[0][0]).recordingUrl}
+                          onEnded={() => setIsPlaying(prev => ({ ...prev, [currentTask.id]: false }))}
+                          className="hidden"
+                        />
+                        <span className="text-sm text-gray-500">
+                          {(currentTask as typeof ttsTaskBatches[0][0]).userInfo}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="mt-6">
+                      <h3 className="font-medium mb-2">Voice Quality Rating</h3>
+                      <p className="text-sm text-gray-500 mb-3">
+                        Rate the clarity, natural tone, and pronunciation of the voice recording.
+                      </p>
+                      
+                      <div className="flex gap-2 justify-between">
+                        {[1, 2, 3, 4, 5].map((rating) => (
+                          <Button
+                            key={rating}
+                            variant={rating < 3 ? "outline" : "default"}
+                            className={`flex-1 ${
+                              rating === 1 ? "border-red-200 hover:border-red-300" : 
+                              rating === 2 ? "border-orange-200 hover:border-orange-300" :
+                              rating === 3 ? "bg-yellow-500 hover:bg-yellow-600" :
+                              rating === 4 ? "bg-lime-500 hover:bg-lime-600" :
+                              "bg-green-500 hover:bg-green-600"
+                            }`}
+                            onClick={() => handleTTSQualityRating(rating, currentTask.id)}
+                          >
+                            {rating}
+                            {rating === 1 && " - Poor"}
+                            {rating === 3 && " - OK"}
+                            {rating === 5 && " - Excellent"}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-5 gap-2 mt-6">
+                      {getTaskBatches()[currentBatchIndex].map((_, idx) => (
+                        <button
+                          key={idx}
+                          className={`h-10 w-10 rounded-full flex items-center justify-center text-sm font-medium ${
+                            idx === currentTaskIndex
+                              ? "bg-primary text-primary-foreground"
+                              : validations[getTaskBatches()[currentBatchIndex][idx].id] !== undefined
+                              ? validations[getTaskBatches()[currentBatchIndex][idx].id]
+                                ? "bg-green-100 text-green-700 border border-green-300"
+                                : "bg-red-100 text-red-700 border border-red-300"
+                              : "bg-gray-100 text-gray-700"
+                          }`}
+                          onClick={() => setCurrentTaskIndex(idx)}
+                        >
+                          {idx + 1}
+                        </button>
+                      ))}
+                    </div>
                     
                     <div className="flex justify-between pt-4 border-t">
                       <Button
@@ -452,15 +658,77 @@ const ValidateTask: React.FC = () => {
                 </TabsContent>
                 
                 <TabsContent value="transcriptions" className="mt-0">
-                  {/* Similar structure to ASR but with transcription specific content */}
                   <div className="space-y-6">
+                    <div className="bg-gray-50 p-4 rounded-md">
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="font-medium">Original Audio</h3>
+                        <span className="text-sm text-gray-500">{(currentTask as typeof transcriptionTaskBatches[0][0]).language}</span>
+                      </div>
+                      
+                      <div className="flex items-center gap-3 mb-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex items-center"
+                          onClick={() => togglePlayback(currentTask.id.toString())}
+                        >
+                          {isPlaying[currentTask.id] ? (
+                            <>
+                              <Pause className="h-4 w-4 mr-1" />
+                              Pause
+                            </>
+                          ) : (
+                            <>
+                              <Play className="h-4 w-4 mr-1" />
+                              Play
+                            </>
+                          )}
+                        </Button>
+                        <audio 
+                          ref={el => audioRefs.current[`transcriptions-${currentTask.id}`] = el}
+                          src={(currentTask as typeof transcriptionTaskBatches[0][0]).audioUrl}
+                          onEnded={() => setIsPlaying(prev => ({ ...prev, [currentTask.id]: false }))}
+                          className="hidden"
+                        />
+                        <span className="text-sm text-gray-500">
+                          {(currentTask as typeof transcriptionTaskBatches[0][0]).userInfo}
+                        </span>
+                      </div>
+                    </div>
+                    
                     <div className="p-5 bg-white rounded-lg border mb-4 shadow-sm">
-                      <h3 className="font-medium text-lg mb-3">Transcription:</h3>
+                      <h3 className="font-medium text-lg mb-3">Submitted Transcription:</h3>
                       <p className="text-xl">{(currentTask as typeof transcriptionTaskBatches[0][0]).transcription}</p>
                     </div>
                     
-                    {/* Add remaining transcription validation interface */}
-                    <p className="text-center py-6">Transcription validation functionality details would be implemented here</p>
+                    <div className="bg-white rounded-lg border p-4">
+                      <h3 className="font-medium mb-2">Edit Transcription (if needed)</h3>
+                      <TranscriptionEditor
+                        initialText={(currentTask as typeof transcriptionTaskBatches[0][0]).transcription}
+                        audioSrc={(currentTask as typeof transcriptionTaskBatches[0][0]).audioUrl}
+                        onSave={handleSaveTranscription}
+                      />
+                    </div>
+                    
+                    <div className="grid grid-cols-5 gap-2 mt-6">
+                      {getTaskBatches()[currentBatchIndex].map((_, idx) => (
+                        <button
+                          key={idx}
+                          className={`h-10 w-10 rounded-full flex items-center justify-center text-sm font-medium ${
+                            idx === currentTaskIndex
+                              ? "bg-primary text-primary-foreground"
+                              : validations[getTaskBatches()[currentBatchIndex][idx].id] !== undefined
+                              ? validations[getTaskBatches()[currentBatchIndex][idx].id]
+                                ? "bg-green-100 text-green-700 border border-green-300"
+                                : "bg-red-100 text-red-700 border border-red-300"
+                              : "bg-gray-100 text-gray-700"
+                          }`}
+                          onClick={() => setCurrentTaskIndex(idx)}
+                        >
+                          {idx + 1}
+                        </button>
+                      ))}
+                    </div>
                     
                     <div className="flex justify-between pt-4 border-t">
                       <Button
@@ -477,6 +745,7 @@ const ValidateTask: React.FC = () => {
                           variant="outline" 
                           className="flex items-center border-red-200 text-red-500 hover:bg-red-50 hover:text-red-600"
                           onClick={() => handleValidate(currentTask.id, false)}
+                          disabled={!transcriptionSaved && editedTranscription !== ""}
                         >
                           <ThumbsDown className="mr-2 h-4 w-4" />
                           Reject
@@ -485,6 +754,7 @@ const ValidateTask: React.FC = () => {
                         <Button 
                           className="flex items-center bg-green-600 hover:bg-green-700"
                           onClick={() => handleValidate(currentTask.id, true)}
+                          disabled={!transcriptionSaved && editedTranscription !== ""}
                         >
                           <ThumbsUp className="mr-2 h-4 w-4" />
                           Approve
