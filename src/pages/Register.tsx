@@ -11,9 +11,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
 import { toast } from 'sonner';
 
-// Initialize Supabase client
-const supabaseUrl = 'https://your-project-url.supabase.co';
-const supabaseKey = 'your-anon-key';
+// Initialize Supabase client - you'll need to replace these with your actual Supabase credentials
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 const Register: React.FC = () => {
@@ -41,10 +41,8 @@ const Register: React.FC = () => {
   const handleLanguageSelect = (language: string) => {
     setFormData(prev => {
       if (prev.languages.includes(language)) {
-        // Remove the language if already selected
         return { ...prev, languages: prev.languages.filter(l => l !== language) };
       } else {
-        // Add the language if not already selected
         return { ...prev, languages: [...prev.languages, language] };
       }
     });

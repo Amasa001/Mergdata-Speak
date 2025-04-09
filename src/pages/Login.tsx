@@ -6,9 +6,17 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Link, useNavigate } from 'react-router-dom';
+import { createClient } from '@supabase/supabase-js';
+import { toast } from 'sonner';
+
+// Initialize Supabase client
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
+  const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -19,11 +27,30 @@ const Login: React.FC = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
   
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Here you would handle form submission, API calls etc.
-    console.log('Login submitted:', formData);
-    navigate('/dashboard');
+    setIsLoading(true);
+    
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: formData.email,
+        password: formData.password,
+      });
+      
+      if (error) {
+        throw error;
+      }
+      
+      if (data.user) {
+        toast.success("Logged in successfully!");
+        navigate('/dashboard');
+      }
+    } catch (error: any) {
+      console.error('Login error:', error);
+      toast.error(error.message || "Failed to log in. Please check your credentials and try again.");
+    } finally {
+      setIsLoading(false);
+    }
   };
   
   return (
@@ -73,8 +100,8 @@ const Login: React.FC = () => {
                   </div>
                 </div>
                 
-                <Button className="w-full mt-6" type="submit">
-                  Log In
+                <Button className="w-full mt-6" type="submit" disabled={isLoading}>
+                  {isLoading ? "Logging in..." : "Log In"}
                 </Button>
               </form>
             </CardContent>
