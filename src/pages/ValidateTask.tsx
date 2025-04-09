@@ -1,12 +1,14 @@
+
 import React, { useState } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, SkipForward, Check, ThumbsUp, ThumbsDown, Play, Pause } from 'lucide-react';
+import { ArrowLeft, SkipForward, ThumbsUp, ThumbsDown, Play, Pause, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { TranscriptionEditor } from '@/components/transcription/TranscriptionEditor';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 const ValidateTask: React.FC = () => {
   const navigate = useNavigate();
@@ -14,6 +16,7 @@ const ValidateTask: React.FC = () => {
   const [currentTaskIndex, setCurrentTaskIndex] = useState(0);
   const [currentBatchIndex, setCurrentBatchIndex] = useState(0);
   const [validations, setValidations] = useState<Record<number, boolean>>({});
+  const [ratings, setRatings] = useState<Record<number, number>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPlaying, setIsPlaying] = useState<Record<number, boolean>>({});
   const [activeTab, setActiveTab] = useState('asr');
@@ -26,72 +29,72 @@ const ValidateTask: React.FC = () => {
     [
       {
         id: 101,
-        originalText: "The weather is beautiful today",
+        imageUrl: "https://source.unsplash.com/random/800x600?wildlife",
         recordingUrl: "https://example.com/audio/validation/asr1.mp3",
         language: "English",
         userInfo: "User ID: 2341"
       },
       {
         id: 102,
-        originalText: "She walks to school every morning",
+        imageUrl: "https://source.unsplash.com/random/800x600?technology",
         recordingUrl: "https://example.com/audio/validation/asr2.mp3",
         language: "English",
         userInfo: "User ID: 1567"
       },
       {
         id: 103,
-        originalText: "They are planning a trip to the mountains",
+        imageUrl: "https://source.unsplash.com/random/800x600?nature",
         recordingUrl: "https://example.com/audio/validation/asr3.mp3",
         language: "English",
         userInfo: "User ID: 8932"
       },
       {
         id: 104,
-        originalText: "The library is open until nine o'clock",
+        imageUrl: "https://source.unsplash.com/random/800x600?city",
         recordingUrl: "https://example.com/audio/validation/asr4.mp3",
         language: "English",
         userInfo: "User ID: 4521"
       },
       {
         id: 105,
-        originalText: "He has been studying for three hours",
+        imageUrl: "https://source.unsplash.com/random/800x600?food",
         recordingUrl: "https://example.com/audio/validation/asr5.mp3",
-        language: "English",
+        language: "Twi",
         userInfo: "User ID: 3217"
       },
       {
         id: 106,
-        originalText: "The flowers in the garden are blooming",
+        imageUrl: "https://source.unsplash.com/random/800x600?architecture",
         recordingUrl: "https://example.com/audio/validation/asr6.mp3",
         language: "Yoruba",
         userInfo: "User ID: 9876"
       },
       {
         id: 107,
-        originalText: "We should meet for lunch next week",
+        imageUrl: "https://source.unsplash.com/random/800x600?people",
         recordingUrl: "https://example.com/audio/validation/asr7.mp3",
         language: "Swahili",
         userInfo: "User ID: 2468"
       },
       {
         id: 108,
-        originalText: "The concert will be held at the city park",
+        imageUrl: "https://source.unsplash.com/random/800x600?transport",
         recordingUrl: "https://example.com/audio/validation/asr8.mp3",
-        language: "English",
+        language: "Ewe",
         userInfo: "User ID: 1357"
       },
       {
         id: 109,
-        originalText: "She has finished reading the book",
+        imageUrl: "https://source.unsplash.com/random/800x600?art",
         recordingUrl: "https://example.com/audio/validation/asr9.mp3",
-        language: "English",
+        language: "Baule",
         userInfo: "User ID: 7531"
       },
       {
         id: 110,
-        originalText: "The children are playing in the backyard",
+        imageUrl: "https://source.unsplash.com/random/800x600?abstract",
         recordingUrl: "https://example.com/audio/validation/asr10.mp3",
-        language: "English",
+        language: "Dioula",
         userInfo: "User ID: 9512"
       },
     ],
@@ -263,6 +266,16 @@ const ValidateTask: React.FC = () => {
   };
 
   const handleValidate = (taskId: number, isValid: boolean) => {
+    // Check if rating has been set for ASR tasks
+    if (activeTab === 'asr' && !ratings[taskId]) {
+      toast({
+        title: "Rating required",
+        description: "Please rate the accuracy of the description before approving or rejecting.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setValidations(prev => ({
       ...prev,
       [taskId]: isValid
@@ -349,6 +362,18 @@ const ValidateTask: React.FC = () => {
       [taskId]: !prev[taskId]
     }));
   };
+
+  const handleRating = (taskId: number, rating: number) => {
+    setRatings(prev => ({
+      ...prev,
+      [taskId]: rating
+    }));
+    
+    toast({
+      title: `Rating set: ${rating}/5`,
+      description: "Your rating has been recorded.",
+    });
+  };
   
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
@@ -394,6 +419,26 @@ const ValidateTask: React.FC = () => {
     getTaskBatches()[currentBatchIndex].some(task => task.id.toString() === id)
   ).length;
 
+  const renderStars = (taskId: number, count: number, selectedRating: number | undefined) => {
+    return (
+      <div className="flex space-x-2 items-center">
+        {Array.from({ length: count }).map((_, idx) => (
+          <Button
+            key={idx}
+            variant="ghost"
+            className={`p-1 h-auto ${selectedRating && idx < selectedRating ? 'text-yellow-500' : 'text-gray-300'}`}
+            onClick={() => handleRating(taskId, idx + 1)}
+          >
+            <Star className="h-6 w-6 fill-current" />
+          </Button>
+        ))}
+        {selectedRating && (
+          <span className="text-sm font-medium ml-2">{selectedRating}/5</span>
+        )}
+      </div>
+    );
+  };
+
   return (
     <MainLayout>
       <div className="container mx-auto px-4 py-8">
@@ -429,7 +474,7 @@ const ValidateTask: React.FC = () => {
                   className="w-full h-2"
                 />
                 <CardDescription className="pt-2">
-                  {activeTab === 'asr' && "Listen and verify if the recording matches the original text"}
+                  {activeTab === 'asr' && "Listen to the audio and verify if it accurately describes the image"}
                   {activeTab === 'tts' && "Listen and verify if the speech synthesis is clear and natural"}
                   {activeTab === 'transcriptions' && "Verify if the transcription accurately represents the audio"}
                 </CardDescription>
@@ -439,8 +484,12 @@ const ValidateTask: React.FC = () => {
                 <TabsContent value="asr" className="mt-0">
                   <div className="space-y-6">
                     <div className="p-5 bg-white rounded-lg border mb-4 shadow-sm">
-                      <h3 className="font-medium text-lg mb-3">Original Text:</h3>
-                      <p className="text-xl">{(currentTask as typeof asrTaskBatches[0][0]).originalText}</p>
+                      <h3 className="font-medium text-lg mb-3">Image to Describe:</h3>
+                      <img 
+                        src={(currentTask as typeof asrTaskBatches[0][0]).imageUrl}
+                        alt="Image for description" 
+                        className="w-full max-h-80 object-contain rounded-lg mx-auto"
+                      />
                     </div>
                     
                     <div className="bg-gray-50 p-4 rounded-md">
@@ -477,6 +526,11 @@ const ValidateTask: React.FC = () => {
                         <span className="text-sm text-gray-500">
                           {(currentTask as typeof asrTaskBatches[0][0]).userInfo}
                         </span>
+                      </div>
+                      
+                      <div className="mt-6">
+                        <h3 className="font-medium mb-2">Rate the accuracy of the description:</h3>
+                        {renderStars(currentTask.id, 5, ratings[currentTask.id])}
                       </div>
                     </div>
                     
@@ -515,6 +569,7 @@ const ValidateTask: React.FC = () => {
                           variant="outline" 
                           className="flex items-center border-red-200 text-red-500 hover:bg-red-50 hover:text-red-600"
                           onClick={() => handleValidate(currentTask.id, false)}
+                          disabled={!ratings[currentTask.id]}
                         >
                           <ThumbsDown className="mr-2 h-4 w-4" />
                           Reject
@@ -523,6 +578,7 @@ const ValidateTask: React.FC = () => {
                         <Button 
                           className="flex items-center bg-green-600 hover:bg-green-700"
                           onClick={() => handleValidate(currentTask.id, true)}
+                          disabled={!ratings[currentTask.id]}
                         >
                           <ThumbsUp className="mr-2 h-4 w-4" />
                           Approve

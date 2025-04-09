@@ -17,19 +17,69 @@ const ASRTask: React.FC = () => {
   const [currentBatchIndex, setCurrentBatchIndex] = useState(0);
   const audioRefs = useRef<Record<number, HTMLAudioElement | null>>({});
 
-  // Mock sentences for ASR task (would come from API in production)
+  // Mock image-based tasks for ASR (would come from API in production)
   const taskBatches = [
     [
-      { id: 1, text: "He has been working in comics ever since.", language: "English" },
-      { id: 2, text: "The weather is quite pleasant today.", language: "English" },
-      { id: 3, text: "She went to the market to buy some fruits.", language: "English" },
-      { id: 4, text: "Children are playing in the park nearby.", language: "English" },
-      { id: 5, text: "The train will arrive at the station soon.", language: "English" },
-      { id: 6, text: "I need to finish this assignment by tomorrow.", language: "English" },
-      { id: 7, text: "He reads at least one book every week.", language: "English" },
-      { id: 8, text: "They are planning to visit their grandparents.", language: "English" },
-      { id: 9, text: "The concert was scheduled for next Friday.", language: "English" },
-      { id: 10, text: "We should conserve water for future generations.", language: "English" },
+      { 
+        id: 1, 
+        imageUrl: "/placeholder.svg", 
+        description: "Describe what you see in this image", 
+        language: "English" 
+      },
+      { 
+        id: 2, 
+        imageUrl: "https://source.unsplash.com/random/800x600?wildlife", 
+        description: "Describe the animals in this image", 
+        language: "English" 
+      },
+      { 
+        id: 3, 
+        imageUrl: "https://source.unsplash.com/random/800x600?technology", 
+        description: "Describe this technology scene", 
+        language: "English" 
+      },
+      { 
+        id: 4, 
+        imageUrl: "https://source.unsplash.com/random/800x600?nature", 
+        description: "Describe this natural landscape", 
+        language: "English" 
+      },
+      { 
+        id: 5, 
+        imageUrl: "https://source.unsplash.com/random/800x600?city", 
+        description: "Describe this urban scene", 
+        language: "English" 
+      },
+      { 
+        id: 6, 
+        imageUrl: "https://source.unsplash.com/random/800x600?food", 
+        description: "Describe this food item", 
+        language: "Twi" 
+      },
+      { 
+        id: 7, 
+        imageUrl: "https://source.unsplash.com/random/800x600?architecture", 
+        description: "Describe this building or structure", 
+        language: "Ewe" 
+      },
+      { 
+        id: 8, 
+        imageUrl: "https://source.unsplash.com/random/800x600?people", 
+        description: "Describe the people in this scene", 
+        language: "English" 
+      },
+      { 
+        id: 9, 
+        imageUrl: "https://source.unsplash.com/random/800x600?transport", 
+        description: "Describe this mode of transportation", 
+        language: "Baule" 
+      },
+      { 
+        id: 10, 
+        imageUrl: "https://source.unsplash.com/random/800x600?art", 
+        description: "Describe this artwork", 
+        language: "Dioula" 
+      },
     ],
     // Additional task batches would be added here
   ];
@@ -145,11 +195,15 @@ const ASRTask: React.FC = () => {
             <CardContent className="p-6">
               <div className="space-y-10">
                 <div className="text-center">
-                  <p className="text-sm text-gray-500 mb-2">Click the microphone then read the sentence aloud</p>
-                  <div className="p-10 bg-white rounded-lg border mb-4 shadow-sm">
-                    <h3 className="text-2xl font-medium text-center">
-                      {currentTask.text}
-                    </h3>
+                  <p className="text-sm text-gray-500 mb-2">Look at the image and describe what you see in {currentTask.language}</p>
+                  <div className="p-4 bg-white rounded-lg border mb-4 shadow-sm">
+                    <img 
+                      src={currentTask.imageUrl}
+                      alt="Image to describe" 
+                      className="w-full max-h-80 object-contain rounded-lg mx-auto"
+                    />
+                    <p className="mt-4 text-gray-700">{currentTask.description}</p>
+                    <p className="mt-2 text-sm font-medium text-primary">Language: {currentTask.language}</p>
                   </div>
                   
                   <div className="grid grid-cols-5 gap-2 mt-6">
