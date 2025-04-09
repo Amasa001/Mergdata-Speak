@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Save, RotateCcw } from 'lucide-react';
+import { Save, RotateCcw, CheckCircle } from 'lucide-react';
 
 interface TranscriptionEditorProps {
   initialText?: string;
@@ -17,20 +17,27 @@ export const TranscriptionEditor: React.FC<TranscriptionEditorProps> = ({
 }) => {
   const [transcription, setTranscription] = useState(initialText);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
   const audioRef = React.useRef<HTMLAudioElement>(null);
 
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setTranscription(e.target.value);
+    // Reset saved state when text changes
+    if (isSaved) {
+      setIsSaved(false);
+    }
   };
 
   const handleSave = () => {
-    if (onSave) {
+    if (onSave && transcription.trim() !== '') {
       onSave(transcription);
+      setIsSaved(true);
     }
   };
 
   const handleReset = () => {
     setTranscription(initialText);
+    setIsSaved(false);
   };
 
   const togglePlayPause = () => {
@@ -72,9 +79,22 @@ export const TranscriptionEditor: React.FC<TranscriptionEditorProps> = ({
           Reset
         </Button>
         
-        <Button onClick={handleSave} className="flex items-center">
-          <Save className="mr-2 h-4 w-4" />
-          Save
+        <Button 
+          onClick={handleSave} 
+          className="flex items-center"
+          disabled={isSaved || transcription.trim() === ''}
+        >
+          {isSaved ? (
+            <>
+              <CheckCircle className="mr-2 h-4 w-4" />
+              Saved
+            </>
+          ) : (
+            <>
+              <Save className="mr-2 h-4 w-4" />
+              Save
+            </>
+          )}
         </Button>
       </div>
     </div>

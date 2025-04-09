@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,7 @@ const TranscribeTask: React.FC = () => {
   const [currentAudioIndex, setCurrentAudioIndex] = useState(0);
   const [transcriptions, setTranscriptions] = useState<Record<number, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCurrentTaskComplete, setIsCurrentTaskComplete] = useState(false);
 
   // Mock audio files for transcription task
   const audioSamples = [
@@ -41,11 +42,24 @@ const TranscribeTask: React.FC = () => {
     },
   ];
   
+  // Check if current task is complete when component loads or currentAudioIndex changes
+  useEffect(() => {
+    setIsCurrentTaskComplete(!!transcriptions[currentAudioIndex]);
+  }, [currentAudioIndex, transcriptions]);
+  
   const handleSaveTranscription = (text: string) => {
     setTranscriptions(prev => ({
       ...prev,
       [currentAudioIndex]: text
     }));
+    
+    setIsCurrentTaskComplete(true);
+    
+    // Show success toast
+    toast({
+      title: "Transcription saved",
+      description: "Your work has been saved successfully.",
+    });
   };
   
   const goToNextAudio = () => {
@@ -74,7 +88,6 @@ const TranscribeTask: React.FC = () => {
     }, 1500);
   };
   
-  const isCurrentAudioTranscribed = !!transcriptions[currentAudioIndex];
   const allAudiosTranscribed = Object.keys(transcriptions).length === audioSamples.length;
 
   return (
@@ -141,7 +154,7 @@ const TranscribeTask: React.FC = () => {
                   {currentAudioIndex < audioSamples.length - 1 ? (
                     <Button
                       onClick={goToNextAudio}
-                      disabled={!isCurrentAudioTranscribed}
+                      disabled={!isCurrentTaskComplete}
                     >
                       Next
                       <ArrowRight className="ml-2 h-4 w-4" />
