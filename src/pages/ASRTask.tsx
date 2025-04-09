@@ -1,10 +1,10 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { AudioRecorder } from '@/components/recording/AudioRecorder';
-import { ArrowLeft, ArrowRight, Check } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Volume2, Play, Pause } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 
@@ -14,6 +14,9 @@ const ASRTask: React.FC = () => {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [recordedAudios, setRecordedAudios] = useState<Record<number, Blob>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPlaying, setIsPlaying] = useState<Record<number, boolean>>({});
+  const audioRefs = useRef<Record<number, HTMLAudioElement | null>>({});
+  const canvasRefs = useRef<Record<number, HTMLCanvasElement | null>>({});
 
   // Mock image prompts for ASR task
   const imageSamples = [
@@ -27,6 +30,11 @@ const ASRTask: React.FC = () => {
       ...prev,
       [currentImageIndex]: audioBlob
     }));
+    
+    toast({
+      title: "Recording saved",
+      description: "Your ASR recording has been saved successfully."
+    });
   };
   
   const goToNextImage = () => {
@@ -54,6 +62,75 @@ const ASRTask: React.FC = () => {
       navigate('/dashboard');
     }, 1500);
   };
+  
+  const togglePlayback = (index: number) => {
+    if (!audioRefs.current[index]) return;
+    
+    const audio = audioRefs.current[index];
+    
+    if (isPlaying[index]) {
+      audio?.pause();
+    } else {
+      // Pause any currently playing audio
+      Object.keys(isPlaying).forEach(key => {
+        const idx = parseInt(key);
+        if (isPlaying[idx] && audioRefs.current[idx]) {
+          audioRefs.current[idx]?.pause();
+          setIsPlaying(prev => ({ ...prev, [idx]: false }));
+        }
+      });
+      
+      audio?.play().catch(err => console.error("Error playing audio:", err));
+    }
+    
+    setIsPlaying(prev => ({ ...prev, [index]: !prev[index] }));
+  };
+  
+  // Draw waveform for recorded audio
+  const drawWaveform = (canvas: HTMLCanvasElement) => {
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Set up wave properties
+    const width = canvas.width;
+    const height = canvas.height;
+    const centerY = height / 2;
+    const segmentWidth = 2;
+    const gap = 1;
+    const segments = Math.floor(width / (segmentWidth + gap));
+    
+    // Draw waveform
+    ctx.fillStyle = 'rgba(249, 115, 22, 0.7)';
+    
+    for (let i = 0; i < segments; i++) {
+      // Create a varying height for visualization
+      const amplitude = Math.random() * (height / 2 - 4) + 4;
+      
+      // Draw a vertical bar
+      ctx.fillRect(
+        i * (segmentWidth + gap),
+        centerY - amplitude / 2,
+        segmentWidth,
+        amplitude
+      );
+    }
+  };
+  
+  // Draw waveforms when recordings change
+  useEffect(() => {
+    Object.keys(recordedAudios).forEach(index => {
+      const idx = parseInt(index);
+      const canvas = canvasRefs.current[idx];
+      if (canvas) {
+        drawWaveform(canvas);
+      }
+    });
+  }, [recordedAudios]);
   
   const isCurrentImageRecorded = !!recordedAudios[currentImageIndex];
   const allImagesRecorded = Object.keys(recordedAudios).length === imageSamples.length;
@@ -123,6 +200,42 @@ const ASRTask: React.FC = () => {
                     maxDuration={15}
                     onRecordingComplete={handleRecordingComplete}
                   />
+                  
+                  {isCurrentImageRecorded && (
+                    <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                      <div className="flex justify-between items-center mb-2">
+                        <h5 className="text-sm font-medium text-gray-700">Your Recording</h5>
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          onClick={() => togglePlayback(currentImageIndex)}
+                        >
+                          {isPlaying[currentImageIndex] ? (
+                            <>
+                              <Pause className="h-3 w-3 mr-1" /> Pause
+                            </>
+                          ) : (
+                            <>
+                              <Play className="h-3 w-3 mr-1" /> Play
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                      
+                      <div className="relative h-12 bg-gray-200 rounded-lg overflow-hidden">
+                        <canvas 
+                          ref={el => canvasRefs.current[currentImageIndex] = el}
+                          className="w-full h-full"
+                        />
+                        <audio 
+                          ref={el => audioRefs.current[currentImageIndex] = el}
+                          src={recordedAudios[currentImageIndex] ? URL.createObjectURL(recordedAudios[currentImageIndex]) : ''}
+                          onEnded={() => setIsPlaying(prev => ({ ...prev, [currentImageIndex]: false }))}
+                          className="hidden"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
                 
                 <div className="flex justify-between pt-4 border-t">

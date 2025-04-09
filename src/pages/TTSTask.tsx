@@ -1,15 +1,25 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Play, Pause, Save, RotateCcw, CheckCircle, Mic, AlertCircle } from 'lucide-react';
+import { Play, Pause, Save, RotateCcw, CheckCircle, Mic, AlertCircle, Volume2, StopCircle } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useToast } from '@/hooks/use-toast';
 
 const TTSTask: React.FC = () => {
+  const { toast } = useToast();
   const [isRecording, setIsRecording] = useState(false);
   const [recordingComplete, setRecordingComplete] = useState(false);
   const [selectedPassage, setSelectedPassage] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const animationRef = useRef<number | null>(null);
+  
+  // Mock audio blob for playback simulation
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   
   const passages = [
     {
@@ -35,27 +45,123 @@ const TTSTask: React.FC = () => {
     }
   ];
   
+  // Simulate waveform drawing
+  const drawWaveform = () => {
+    if (!canvasRef.current || !isRecording) return;
+    
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Set up wave properties
+    const centerY = canvas.height / 2;
+    const amplitude = Math.random() * 30 + 10; // Random amplitude for visualization
+    
+    // Draw waveform
+    ctx.beginPath();
+    ctx.moveTo(0, centerY);
+    
+    for (let x = 0; x < canvas.width; x++) {
+      // Create random oscillation for visualization
+      const y = centerY + amplitude * Math.sin(x * 0.05 + Date.now() * 0.005) * Math.random();
+      ctx.lineTo(x, y);
+    }
+    
+    ctx.strokeStyle = '#F97316';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    
+    // Continue animation
+    animationRef.current = requestAnimationFrame(drawWaveform);
+  };
+  
   const handleRecord = () => {
     setIsRecording(!isRecording);
+    
     if (!isRecording) {
-      // Would start recording here
-      console.log("Recording started");
+      // Start recording
+      toast({
+        title: "Recording started",
+        description: "Speak clearly into your microphone",
+      });
+      
+      // Initialize animation
+      if (canvasRef.current) {
+        animationRef.current = requestAnimationFrame(drawWaveform);
+      }
+      
+      // Simulate recording finish after 5 seconds
+      setTimeout(() => {
+        if (isRecording) {
+          stopRecording();
+        }
+      }, 10000); // Auto-stop after 10 seconds for demo purposes
     } else {
-      // Would stop recording here
-      console.log("Recording stopped");
-      setRecordingComplete(true);
+      stopRecording();
     }
+  };
+  
+  const stopRecording = () => {
+    setIsRecording(false);
+    setRecordingComplete(true);
+    
+    // Stop animation
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
+    }
+    
+    // Create a mock audio blob
+    const mockAudio = new Blob([], { type: 'audio/wav' });
+    setAudioBlob(mockAudio);
+    
+    toast({
+      title: "Recording complete",
+      description: "You can now review your recording",
+    });
   };
   
   const handleReset = () => {
     setIsRecording(false);
     setRecordingComplete(false);
+    setAudioBlob(null);
+    
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
+    }
   };
   
   const handleSave = () => {
-    // Would save the recording here
-    console.log("Recording saved");
-    handleReset();
+    setIsSaving(true);
+    
+    // Simulate saving process
+    setTimeout(() => {
+      toast({
+        title: "Recording saved",
+        description: "Your recording has been saved successfully",
+      });
+      handleReset();
+      setIsSaving(false);
+    }, 1500);
+  };
+  
+  const togglePlayback = () => {
+    if (!audioRef.current) return;
+    
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play().catch(err => {
+        // This is just a mock playback, so we simulate it
+        setTimeout(() => setIsPlaying(false), 3000);
+      });
+    }
+    
+    setIsPlaying(!isPlaying);
   };
   
   const handleSelectPassage = (index: number) => {
@@ -115,51 +221,94 @@ const TTSTask: React.FC = () => {
                             <Button 
                               size="sm"
                               onClick={handleSave}
+                              disabled={isSaving}
                             >
-                              <Save className="h-4 w-4 mr-1" />
-                              Save Recording
+                              {isSaving ? (
+                                <>
+                                  <span className="animate-spin mr-1">◌</span>
+                                  Saving...
+                                </>
+                              ) : (
+                                <>
+                                  <Save className="h-4 w-4 mr-1" />
+                                  Save Recording
+                                </>
+                              )}
                             </Button>
                           </div>
                         </div>
                         
-                        <div className="mt-4 w-full h-12 bg-gray-200 rounded-lg relative">
-                          {/* Audio waveform visualization would go here */}
-                          <div className="w-full h-full flex items-center justify-center">
-                            <span className="text-sm text-gray-500">Audio waveform visualization</span>
-                          </div>
+                        <div className="mt-4 w-full h-12 bg-gray-200 rounded-lg relative overflow-hidden">
+                          <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 30" preserveAspectRatio="none">
+                            <path 
+                              d="M0,15 Q5,5 10,15 T20,15 T30,15 T40,15 T50,15 T60,15 T70,15 T80,15 T90,15 T100,15" 
+                              fill="none" 
+                              stroke="rgba(249, 115, 22, 0.7)" 
+                              strokeWidth="2"
+                            />
+                            <path 
+                              d="M0,15 Q5,25 10,15 T20,15 T30,15 T40,15 T50,15 T60,15 T70,15 T80,15 T90,15 T100,15" 
+                              fill="none" 
+                              stroke="rgba(249, 115, 22, 0.7)" 
+                              strokeWidth="2"
+                            />
+                          </svg>
                         </div>
                         
+                        <audio ref={audioRef} className="hidden" />
+                        
                         <div className="mt-2 flex justify-center">
-                          <Button variant="outline" size="sm">
-                            <Play className="h-4 w-4 mr-1" />
-                            Play Back
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={togglePlayback}
+                          >
+                            {isPlaying ? (
+                              <>
+                                <Pause className="h-4 w-4 mr-1" />
+                                Pause
+                              </>
+                            ) : (
+                              <>
+                                <Play className="h-4 w-4 mr-1" />
+                                Play Back
+                              </>
+                            )}
                           </Button>
                         </div>
                       </div>
                     ) : (
-                      <div className="text-center">
-                        <Button
-                          className={isRecording ? "bg-red-500 hover:bg-red-600" : ""}
-                          onClick={handleRecord}
-                          size="lg"
-                        >
-                          {isRecording ? (
-                            <>
-                              <Pause className="h-5 w-5 mr-1" />
-                              Stop Recording
-                            </>
-                          ) : (
-                            <>
-                              <Mic className="h-5 w-5 mr-1" />
-                              Start Recording
-                            </>
+                      <div className="w-full">
+                        <div className="text-center mb-4">
+                          <Button
+                            className={isRecording ? "bg-red-500 hover:bg-red-600" : ""}
+                            onClick={handleRecord}
+                            size="lg"
+                          >
+                            {isRecording ? (
+                              <>
+                                <StopCircle className="h-5 w-5 mr-1" />
+                                Stop Recording
+                              </>
+                            ) : (
+                              <>
+                                <Mic className="h-5 w-5 mr-1" />
+                                Start Recording
+                              </>
+                            )}
+                          </Button>
+                          
+                          {isRecording && (
+                            <div className="mt-2 flex items-center justify-center text-red-500">
+                              <AlertCircle className="h-4 w-4 mr-1" />
+                              <span>Recording in progress...</span>
+                            </div>
                           )}
-                        </Button>
+                        </div>
                         
                         {isRecording && (
-                          <div className="mt-2 flex items-center justify-center text-red-500">
-                            <AlertCircle className="h-4 w-4 mr-1" />
-                            <span>Recording in progress...</span>
+                          <div className="w-full h-12 bg-gray-200 rounded-lg overflow-hidden">
+                            <canvas ref={canvasRef} className="w-full h-full"></canvas>
                           </div>
                         )}
                       </div>
