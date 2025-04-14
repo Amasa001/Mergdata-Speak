@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -6,7 +7,6 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, CheckCircle, XCircle, Headphones, FileText, Languages, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Tables } from '@/integrations/supabase/types';
 import { Progress } from '@/components/ui/progress';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label';
 // Component for validation task
 const ValidateTask: React.FC = () => {
   const navigate = useNavigate();
-  const [contributions, setContributions] = useState<Tables['contributions'][]>([]);
+  const [contributions, setContributions] = useState<any[]>([]);
   const [languages, setLanguages] = useState<string[]>([]);
   const [selectedLanguage, setSelectedLanguage] = useState<string>('all');
   const [selectedType, setSelectedType] = useState<string>('all');
@@ -32,20 +32,22 @@ const ValidateTask: React.FC = () => {
         const { data: tasksData, error: tasksError } = await supabase
           .from('tasks')
           .select('language')
-          .distinct('language');
+          .eq('status', 'completed');
 
         if (tasksError) throw tasksError;
 
-        // Map and filter unique languages, ensuring they are strings
-        const uniqueLanguages = Array.from(
-          new Set(
-            tasksData
-              .map(task => task.language)
-              .filter((lang): lang is string => typeof lang === 'string')
-          )
-        );
+        if (tasksData) {
+          // Extract unique languages from tasks
+          const uniqueLanguages = Array.from(
+            new Set(
+              tasksData
+                .map(task => task.language)
+                .filter((lang): lang is string => typeof lang === 'string')
+            )
+          );
 
-        setLanguages(uniqueLanguages);
+          setLanguages(uniqueLanguages);
+        }
       } catch (error) {
         console.error('Error fetching languages:', error);
       }
@@ -73,9 +75,12 @@ const ValidateTask: React.FC = () => {
           query = query.eq('tasks.language', selectedLanguage);
         }
         
-        // Apply type filter if not 'all'
+        // Apply type filter if not 'all' and it's a valid task type
         if (selectedType !== 'all') {
-          query = query.eq('tasks.type', selectedType);
+          const validTypes = ['asr', 'tts', 'transcription', 'translation'];
+          if (validTypes.includes(selectedType)) {
+            query = query.eq('tasks.type', selectedType as any);
+          }
         }
         
         const { data, error } = await query;
@@ -181,14 +186,14 @@ const ValidateTask: React.FC = () => {
           <div className="space-y-4">
             <div className="p-4 bg-gray-50 rounded-lg">
               <h4 className="font-medium mb-2">Original Image Prompt:</h4>
-              {currentContribution.tasks.content.imageUrl && (
+              {currentContribution.tasks.content?.imageUrl && (
                 <img 
-                  src={currentContribution.tasks.content.imageUrl as string} 
+                  src={currentContribution.tasks.content.imageUrl} 
                   alt="ASR prompt" 
                   className="max-h-64 object-contain mx-auto mb-4"
                 />
               )}
-              <p className="text-sm text-gray-700">{currentContribution.tasks.content.description as string}</p>
+              <p className="text-sm text-gray-700">{currentContribution.tasks.content?.description}</p>
             </div>
             
             <div className="p-4 bg-gray-50 rounded-lg">
@@ -211,7 +216,7 @@ const ValidateTask: React.FC = () => {
           <div className="space-y-4">
             <div className="p-4 bg-gray-50 rounded-lg">
               <h4 className="font-medium mb-2">Original Text Prompt:</h4>
-              <p className="text-sm text-gray-700">{currentContribution.tasks.content.text as string}</p>
+              <p className="text-sm text-gray-700">{currentContribution.tasks.content?.text}</p>
             </div>
             
             <div className="p-4 bg-gray-50 rounded-lg">
@@ -234,9 +239,9 @@ const ValidateTask: React.FC = () => {
           <div className="space-y-4">
             <div className="p-4 bg-gray-50 rounded-lg">
               <h4 className="font-medium mb-2">Original Audio:</h4>
-              {currentContribution.tasks.content.audioUrl ? (
+              {currentContribution.tasks.content?.audioUrl ? (
                 <audio 
-                  src={currentContribution.tasks.content.audioUrl as string} 
+                  src={currentContribution.tasks.content.audioUrl} 
                   controls 
                   className="w-full"
                 />
@@ -247,7 +252,7 @@ const ValidateTask: React.FC = () => {
             
             <div className="p-4 bg-gray-50 rounded-lg">
               <h4 className="font-medium mb-2">Submitted Transcription:</h4>
-              <p className="text-sm text-gray-700 whitespace-pre-wrap">{content.transcription as string}</p>
+              <p className="text-sm text-gray-700 whitespace-pre-wrap">{content?.transcription}</p>
             </div>
           </div>
         );
@@ -257,13 +262,13 @@ const ValidateTask: React.FC = () => {
           <div className="space-y-4">
             <div className="p-4 bg-gray-50 rounded-lg">
               <h4 className="font-medium mb-2">Original Text:</h4>
-              <p className="text-sm text-gray-700">{currentContribution.tasks.content.sourceText as string}</p>
-              <p className="text-xs text-gray-500 mt-1">Source Language: {currentContribution.tasks.content.sourceLanguage as string}</p>
+              <p className="text-sm text-gray-700">{currentContribution.tasks.content?.sourceText}</p>
+              <p className="text-xs text-gray-500 mt-1">Source Language: {currentContribution.tasks.content?.sourceLanguage}</p>
             </div>
             
             <div className="p-4 bg-gray-50 rounded-lg">
               <h4 className="font-medium mb-2">Submitted Translation:</h4>
-              <p className="text-sm text-gray-700">{content.translation as string}</p>
+              <p className="text-sm text-gray-700">{content?.translation}</p>
               <p className="text-xs text-gray-500 mt-1">Target Language: {currentContribution.tasks.language}</p>
             </div>
           </div>

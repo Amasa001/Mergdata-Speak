@@ -1,82 +1,58 @@
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from "react-router-dom";
-// import { useAuth } from './hooks/useAuth'; // Commented out for now
+import {
+  BrowserRouter as Router,
+  Route,
+  Routes,
+} from "react-router-dom";
+import "./App.css";
+import { Toaster } from "sonner";
 
-// Import layouts & protected route component
-import { MainLayout } from "@/components/layout/MainLayout";
-import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
+import Login from "@/pages/Login";
+import Register from "@/pages/Register";
+import Profile from "@/pages/Profile";
+import NotFound from "@/pages/NotFound";
+import AppLayout from "@/layouts/AppLayout";
+import ProtectedRoute from "@/components/auth/ProtectedRoute";
 
-// Import pages
-import Index from "./pages/Index";
-import Register from "./pages/Register";
-import Login from "./pages/Login";
-import Dashboard from "./pages/Dashboard";
-import Profile from "./pages/Profile";
-import HowItWorks from "./pages/HowItWorks";
-import FAQ from "./pages/FAQ";
-import Leaderboard from "./pages/Leaderboard";
+import Dashboard from "@/pages/Dashboard";
+import ASRTask from "@/pages/ASRTask";
+import TTSTask from "@/pages/TTSTask";
+import ValidateTask from "@/pages/ValidateTask";
+import TranscribeTask from "@/pages/TranscribeTask";
+import TranslateTask from "@/pages/TranslateTask";
+import AdminDashboard from "@/pages/admin/AdminDashboard";
+import TaskManager from "@/pages/admin/TaskManager";
 
-// Import task pages
-import ASRTask from "./pages/ASRTask";
-import TTSTask from "./pages/TTSTask";
-import TranscribeTask from "./pages/TranscribeTask";
-import TranslateTask from "./pages/TranslateTask";
-import ValidateTask from "./pages/ValidateTask";
-
-// Create a client for React Query
-const queryClient = new QueryClient();
-
-// TODO: Add authentication check to properly route users
-// For now, we assume certain routes are protected and use AppLayout
-
-// PrivateRoute component for protecting routes (Commented out for now)
-/*
-const PrivateRoute = ({ children }: { children: JSX.Element }) => {
-  const { user } = useAuth();
-  return user ? children : <Navigate to="/login" replace />;
-};
-*/
-
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Router>
+function App() {
+  return (
+    <Router>
+      <main className="min-h-screen flex flex-col">
         <Routes>
-          {/* Public routes with MainLayout */}
-          <Route element={<MainLayout><Outlet /></MainLayout>}>
-            <Route index element={<Index />} />
-            <Route path="how-it-works" element={<HowItWorks />} />
-            <Route path="faq" element={<FAQ />} />
-            <Route path="register" element={<Register />} />
-            <Route path="login" element={<Login />} />
-          </Route>
-
-          {/* Protected routes - ProtectedRoute already applies AppLayout */}
-          <Route element={<ProtectedRoute />}>
+          {/* Public routes */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/" element={<Login />} />
+          <Route path="/profile" element={<Profile />} />
+          
+          {/* Protected routes */}
+          <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/leaderboard" element={<Leaderboard />} />
-            
-            {/* Task routes */}
             <Route path="/asr" element={<ASRTask />} />
             <Route path="/tts" element={<TTSTask />} />
+            <Route path="/validate" element={<ValidateTask />} />
             <Route path="/transcribe" element={<TranscribeTask />} />
             <Route path="/translate" element={<TranslateTask />} />
-            <Route path="/validate" element={<ValidateTask />} />
+            
+            {/* Admin routes */}
+            <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/admin/task-manager" element={<TaskManager />} />
           </Route>
 
-          {/* Catch-all route - redirect to home */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
-      </Router>
-
-      <Toaster />
-      <Sonner />
-    </TooltipProvider>
-  </QueryClientProvider>
-);
+        <Toaster />
+      </main>
+    </Router>
+  );
+}
 
 export default App;
