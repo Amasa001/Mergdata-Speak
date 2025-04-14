@@ -9,11 +9,60 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      contributions: {
+        Row: {
+          created_at: string
+          duration_ms: number | null
+          id: number
+          status: Database["public"]["Enums"]["contribution_status"]
+          storage_url: string | null
+          submitted_data: Json
+          task_id: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          duration_ms?: number | null
+          id?: number
+          status?: Database["public"]["Enums"]["contribution_status"]
+          storage_url?: string | null
+          submitted_data?: Json
+          task_id: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          duration_ms?: number | null
+          id?: number
+          status?: Database["public"]["Enums"]["contribution_status"]
+          storage_url?: string | null
+          submitted_data?: Json
+          task_id?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contributions_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contributions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
           full_name: string | null
           id: string
+          is_admin: boolean | null
           languages: string[] | null
           role: string | null
         }
@@ -21,6 +70,7 @@ export type Database = {
           created_at?: string
           full_name?: string | null
           id: string
+          is_admin?: boolean | null
           languages?: string[] | null
           role?: string | null
         }
@@ -28,20 +78,116 @@ export type Database = {
           created_at?: string
           full_name?: string | null
           id?: string
+          is_admin?: boolean | null
           languages?: string[] | null
           role?: string | null
         }
         Relationships: []
+      }
+      tasks: {
+        Row: {
+          assigned_to: string | null
+          batch_id: string | null
+          content: Json
+          created_at: string
+          created_by: string
+          id: number
+          language: string
+          priority: Database["public"]["Enums"]["priority_level"]
+          status: Database["public"]["Enums"]["task_status"]
+          type: Database["public"]["Enums"]["task_type"]
+        }
+        Insert: {
+          assigned_to?: string | null
+          batch_id?: string | null
+          content: Json
+          created_at?: string
+          created_by: string
+          id?: number
+          language: string
+          priority?: Database["public"]["Enums"]["priority_level"]
+          status?: Database["public"]["Enums"]["task_status"]
+          type: Database["public"]["Enums"]["task_type"]
+        }
+        Update: {
+          assigned_to?: string | null
+          batch_id?: string | null
+          content?: Json
+          created_at?: string
+          created_by?: string
+          id?: number
+          language?: string
+          priority?: Database["public"]["Enums"]["priority_level"]
+          status?: Database["public"]["Enums"]["task_status"]
+          type?: Database["public"]["Enums"]["task_type"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tasks_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      validations: {
+        Row: {
+          comment: string | null
+          contribution_id: number
+          created_at: string
+          id: number
+          is_approved: boolean
+          validator_id: string
+        }
+        Insert: {
+          comment?: string | null
+          contribution_id: number
+          created_at?: string
+          id?: number
+          is_approved: boolean
+          validator_id: string
+        }
+        Update: {
+          comment?: string | null
+          contribution_id?: number
+          created_at?: string
+          id?: number
+          is_approved?: boolean
+          validator_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "validations_contribution_id_fkey"
+            columns: ["contribution_id"]
+            isOneToOne: false
+            referencedRelation: "contributions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "validations_validator_id_fkey"
+            columns: ["validator_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      check_admin_access: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      contribution_status: "pending_validation" | "validated" | "rejected"
+      priority_level: "low" | "medium" | "high"
+      task_status: "pending" | "assigned" | "completed" | "archived"
+      task_type: "asr" | "tts" | "transcription" | "translation"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -156,6 +302,11 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      contribution_status: ["pending_validation", "validated", "rejected"],
+      priority_level: ["low", "medium", "high"],
+      task_status: ["pending", "assigned", "completed", "archived"],
+      task_type: ["asr", "tts", "transcription", "translation"],
+    },
   },
 } as const
