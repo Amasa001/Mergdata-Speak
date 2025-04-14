@@ -1,3 +1,4 @@
+
 import {
   BrowserRouter as Router,
   Route,
@@ -34,17 +35,19 @@ function App() {
           <Route path="/profile" element={<Profile />} />
           
           {/* Protected routes */}
-          <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/asr" element={<ASRTask />} />
-            <Route path="/tts" element={<TTSTask />} />
-            <Route path="/validate" element={<ValidateTask />} />
-            <Route path="/transcribe" element={<TranscribeTask />} />
-            <Route path="/translate" element={<TranslateTask />} />
-            
-            {/* Admin routes */}
-            <Route path="/admin" element={<AdminDashboard />} />
-            <Route path="/admin/task-manager" element={<TaskManager />} />
+          <Route element={<ProtectedRoute />}>
+            <Route element={<AppLayout />}>
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/asr" element={<ASRTask />} />
+              <Route path="/tts" element={<TTSTask />} />
+              <Route path="/validate" element={<ValidateTask />} />
+              <Route path="/transcribe" element={<TranscribeTask />} />
+              <Route path="/translate" element={<TranslateTask />} />
+              
+              {/* Admin routes */}
+              <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/admin/task-manager" element={<TaskManager />} />
+            </Route>
           </Route>
 
           <Route path="*" element={<NotFound />} />
