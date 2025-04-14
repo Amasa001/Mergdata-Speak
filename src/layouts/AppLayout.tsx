@@ -1,18 +1,17 @@
 
 import React from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { AppHeader } from '@/components/layout/AppHeader';
-import Navigation from '@/components/layout/Navigation';
-import { SideNavigation } from '@/components/layout/SideNavigation';
 
 const AppLayout: React.FC = () => {
+  const location = useLocation();
+  const showNavigation = location.pathname === '/profile';
+
   return (
     <div className="flex min-h-screen bg-background">
-      <SideNavigation />
       <div className="flex-1 flex flex-col">
-        <AppHeader />
+        {showNavigation && <AppHeader />}
         <main className="flex-1 p-6">
-          <Navigation />
           <div className="mt-6">
             <Outlet />
           </div>
