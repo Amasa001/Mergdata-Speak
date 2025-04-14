@@ -1,6 +1,4 @@
-
 import React from 'react';
-import { MainLayout } from '@/components/layout/MainLayout';
 import {
   Accordion,
   AccordionContent,
@@ -69,70 +67,68 @@ const FAQ: React.FC = () => {
   ];
 
   return (
-    <MainLayout>
-      <div className="container mx-auto px-4 py-12">
-        <div className="max-w-3xl mx-auto">
-          <h1 className="text-4xl font-bold mb-3 text-center">Frequently Asked Questions</h1>
-          <p className="text-gray-600 text-center mb-12 max-w-2xl mx-auto">
-            Find answers to common questions about AfriSpeakNexus and how to contribute.
-          </p>
+    <div className="container mx-auto px-4 py-12">
+      <div className="max-w-3xl mx-auto">
+        <h1 className="text-4xl font-bold mb-3 text-center">Frequently Asked Questions</h1>
+        <p className="text-gray-600 text-center mb-12 max-w-2xl mx-auto">
+          Find answers to common questions about AfriSpeakNexus and how to contribute.
+        </p>
 
-          <div className="space-y-10">
-            <div>
-              <h2 className="text-2xl font-semibold mb-4">General Questions</h2>
-              <Accordion type="single" collapsible className="w-full">
-                {generalFaqs.map((faq, index) => (
-                  <AccordionItem key={index} value={`general-item-${index}`}>
-                    <AccordionTrigger>{faq.question}</AccordionTrigger>
-                    <AccordionContent>
-                      <p className="text-gray-700">{faq.answer}</p>
-                    </AccordionContent>
-                  </AccordionItem>
-                ))}
-              </Accordion>
-            </div>
-
-            <div>
-              <h2 className="text-2xl font-semibold mb-4">Contributing</h2>
-              <Accordion type="single" collapsible className="w-full">
-                {contributionFaqs.map((faq, index) => (
-                  <AccordionItem key={index} value={`contribution-item-${index}`}>
-                    <AccordionTrigger>{faq.question}</AccordionTrigger>
-                    <AccordionContent>
-                      <p className="text-gray-700">{faq.answer}</p>
-                    </AccordionContent>
-                  </AccordionItem>
-                ))}
-              </Accordion>
-            </div>
-
-            <div>
-              <h2 className="text-2xl font-semibold mb-4">Technical Details</h2>
-              <Accordion type="single" collapsible className="w-full">
-                {technicalFaqs.map((faq, index) => (
-                  <AccordionItem key={index} value={`technical-item-${index}`}>
-                    <AccordionTrigger>{faq.question}</AccordionTrigger>
-                    <AccordionContent>
-                      <p className="text-gray-700">{faq.answer}</p>
-                    </AccordionContent>
-                  </AccordionItem>
-                ))}
-              </Accordion>
-            </div>
+        <div className="space-y-10">
+          <div>
+            <h2 className="text-2xl font-semibold mb-4">General Questions</h2>
+            <Accordion type="single" collapsible className="w-full">
+              {generalFaqs.map((faq, index) => (
+                <AccordionItem key={index} value={`general-item-${index}`}>
+                  <AccordionTrigger>{faq.question}</AccordionTrigger>
+                  <AccordionContent>
+                    <p className="text-gray-700">{faq.answer}</p>
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
           </div>
 
-          <div className="mt-16 text-center">
-            <h3 className="text-xl font-semibold mb-4">Didn't find the answer you're looking for?</h3>
-            <p className="text-gray-600 mb-6">
-              Contact us directly and we'll get back to you as soon as possible.
-            </p>
-            <Link to="/contact">
-              <Button>Contact Support</Button>
-            </Link>
+          <div>
+            <h2 className="text-2xl font-semibold mb-4">Contributing</h2>
+            <Accordion type="single" collapsible className="w-full">
+              {contributionFaqs.map((faq, index) => (
+                <AccordionItem key={index} value={`contribution-item-${index}`}>
+                  <AccordionTrigger>{faq.question}</AccordionTrigger>
+                  <AccordionContent>
+                    <p className="text-gray-700">{faq.answer}</p>
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </div>
+
+          <div>
+            <h2 className="text-2xl font-semibold mb-4">Technical Details</h2>
+            <Accordion type="single" collapsible className="w-full">
+              {technicalFaqs.map((faq, index) => (
+                <AccordionItem key={index} value={`technical-item-${index}`}>
+                  <AccordionTrigger>{faq.question}</AccordionTrigger>
+                  <AccordionContent>
+                    <p className="text-gray-700">{faq.answer}</p>
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
           </div>
         </div>
+
+        <div className="mt-16 text-center">
+          <h3 className="text-xl font-semibold mb-4">Didn't find the answer you're looking for?</h3>
+          <p className="text-gray-600 mb-6">
+            Contact us directly and we'll get back to you as soon as possible.
+          </p>
+          <Link to="/contact">
+            <Button>Contact Support</Button>
+          </Link>
+        </div>
       </div>
-    </MainLayout>
+    </div>
   );
 };
 

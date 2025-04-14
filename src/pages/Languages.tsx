@@ -1,8 +1,8 @@
-
 import React from 'react';
-import { MainLayout } from '@/components/layout/MainLayout';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Link } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 
@@ -83,67 +83,65 @@ const Languages: React.FC = () => {
   };
 
   return (
-    <MainLayout>
-      <div className="container mx-auto px-4 py-12">
-        <div className="max-w-5xl mx-auto">
-          <h1 className="text-4xl font-bold mb-3 text-center">African Languages</h1>
-          <p className="text-gray-600 text-center mb-8 max-w-3xl mx-auto">
-            Track our progress in developing speech datasets for African languages. Each language needs recordings, transcriptions, and validations to reach our target goal.
-          </p>
+    <div className="container mx-auto px-4 py-12">
+      <div className="max-w-5xl mx-auto">
+        <h1 className="text-4xl font-bold mb-3 text-center">African Languages</h1>
+        <p className="text-gray-600 text-center mb-8 max-w-3xl mx-auto">
+          Track our progress in developing speech datasets for African languages. Each language needs recordings, transcriptions, and validations to reach our target goal.
+        </p>
 
-          <Tabs defaultValue="West Africa">
-            <TabsList className="grid grid-cols-3 mb-8">
-              {regions.map((region) => (
-                <TabsTrigger key={region.name} value={region.name}>{region.name}</TabsTrigger>
-              ))}
-            </TabsList>
-
+        <Tabs defaultValue="West Africa">
+          <TabsList className="grid grid-cols-3 mb-8">
             {regions.map((region) => (
-              <TabsContent key={region.name} value={region.name}>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {region.languages.map((language) => (
-                    <LanguageCard key={language.name} language={language} />
-                  ))}
-                </div>
-              </TabsContent>
+              <TabsTrigger key={region.name} value={region.name}>{region.name}</TabsTrigger>
             ))}
-          </Tabs>
+          </TabsList>
 
-          <div className="mt-12 border-t pt-8">
-            <h2 className="text-2xl font-semibold mb-4">Language Contribution Guide</h2>
-            <p className="text-gray-700 mb-6">
-              We welcome contributions in all African languages. Here's how you can help:
-            </p>
-            <div className="grid md:grid-cols-3 gap-6">
-              <Card className="bg-afri-orange/10">
-                <CardContent className="pt-6">
-                  <h3 className="font-semibold text-lg mb-2">Record Speech</h3>
-                  <p className="text-gray-700">
-                    Sign up as an ASR or TTS contributor and record your voice to help build our dataset.
-                  </p>
-                </CardContent>
-              </Card>
-              <Card className="bg-afri-blue/10">
-                <CardContent className="pt-6">
-                  <h3 className="font-semibold text-lg mb-2">Transcribe Audio</h3>
-                  <p className="text-gray-700">
-                    Help transcribe audio recordings to create accurate text pairs for our speech models.
-                  </p>
-                </CardContent>
-              </Card>
-              <Card className="bg-afri-green/10">
-                <CardContent className="pt-6">
-                  <h3 className="font-semibold text-lg mb-2">Validate Data</h3>
-                  <p className="text-gray-700">
-                    Review recordings and transcriptions for quality and accuracy to ensure high quality data.
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
+          {regions.map((region) => (
+            <TabsContent key={region.name} value={region.name}>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {region.languages.map((language) => (
+                  <LanguageCard key={language.name} language={language} />
+                ))}
+              </div>
+            </TabsContent>
+          ))}
+        </Tabs>
+
+        <div className="mt-12 border-t pt-8">
+          <h2 className="text-2xl font-semibold mb-4">Language Contribution Guide</h2>
+          <p className="text-gray-700 mb-6">
+            We welcome contributions in all African languages. Here's how you can help:
+          </p>
+          <div className="grid md:grid-cols-3 gap-6">
+            <Card className="bg-afri-orange/10">
+              <CardContent className="pt-6">
+                <h3 className="font-semibold text-lg mb-2">Record Speech</h3>
+                <p className="text-gray-700">
+                  Sign up as an ASR or TTS contributor and record your voice to help build our dataset.
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="bg-afri-blue/10">
+              <CardContent className="pt-6">
+                <h3 className="font-semibold text-lg mb-2">Transcribe Audio</h3>
+                <p className="text-gray-700">
+                  Help transcribe audio recordings to create accurate text pairs for our speech models.
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="bg-afri-green/10">
+              <CardContent className="pt-6">
+                <h3 className="font-semibold text-lg mb-2">Validate Data</h3>
+                <p className="text-gray-700">
+                  Review recordings and transcriptions for quality and accuracy to ensure high quality data.
+                </p>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>
-    </MainLayout>
+    </div>
   );
 };
 

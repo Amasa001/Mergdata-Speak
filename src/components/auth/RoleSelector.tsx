@@ -1,8 +1,7 @@
-
 import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Mic, FileText, Headphones, CheckCircle } from 'lucide-react';
+import { Mic, FileText, Headphones, CheckCircle, Languages } from 'lucide-react';
 
 interface RoleOption {
   id: string;
@@ -49,6 +48,13 @@ export const RoleSelector: React.FC<RoleSelectorProps> = ({
       description: "Review and verify the quality of audio and transcriptions.",
       icon: <CheckCircle className="h-6 w-6" />,
       color: "text-afri-brown bg-afri-yellow/30"
+    },
+    {
+      id: "translator",
+      title: "Translator",
+      description: "Translate English phrases into different African languages.",
+      icon: <Languages className="h-6 w-6" />,
+      color: "text-afri-purple bg-afri-purple/10"
     }
   ];
 

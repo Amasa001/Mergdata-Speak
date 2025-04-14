@@ -1,6 +1,4 @@
-
 import React from 'react';
-import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Link } from 'react-router-dom';
@@ -74,80 +72,78 @@ const HowItWorks: React.FC = () => {
   ];
 
   return (
-    <MainLayout>
-      <div className="container mx-auto px-4 py-12">
-        <div className="max-w-4xl mx-auto">
-          <h1 className="text-4xl font-bold mb-3 text-center">How AfriSpeakNexus Works</h1>
-          <p className="text-gray-600 text-center mb-12 max-w-2xl mx-auto">
-            Our platform makes it easy to contribute to African language technology. 
-            Here's a simple guide to how you can help build better speech technologies.
-          </p>
+    <div className="container mx-auto px-4 py-12">
+      <div className="max-w-4xl mx-auto">
+        <h1 className="text-4xl font-bold mb-3 text-center">How AfriSpeakNexus Works</h1>
+        <p className="text-gray-600 text-center mb-12 max-w-2xl mx-auto">
+          Our platform makes it easy to contribute to African language technology. 
+          Here's a simple guide to how you can help build better speech technologies.
+        </p>
 
-          {/* Process Steps */}
-          <div className="relative mb-24">
-            <div className="hidden md:block absolute left-1/2 top-16 h-[calc(100%-8rem)] w-1 bg-gray-200 -translate-x-1/2" />
-            
-            <div className="space-y-20">
-              {steps.map((step, index) => (
-                <div key={index} className="relative">
-                  <div className="md:absolute left-1/2 -translate-x-1/2 z-10 mb-4 md:mb-0">
-                    <div className={`${step.color} w-20 h-20 rounded-full flex items-center justify-center mx-auto`}>
-                      {step.icon}
-                    </div>
-                  </div>
-                  
-                  <div className={`md:grid md:grid-cols-2 md:gap-16 ${index % 2 === 0 ? '' : 'md:flex-row-reverse'}`}>
-                    <div className={`${index % 2 === 0 ? 'md:text-right md:pr-24' : 'md:pl-24'} md:flex md:flex-col md:justify-center`}>
-                      <h3 className="text-2xl font-bold mb-2">{step.title}</h3>
-                      <p className="text-gray-600">{step.description}</p>
-                    </div>
-                    
-                    <div className={`${index % 2 === 0 ? 'md:order-first' : ''} hidden md:block`} />
+        {/* Process Steps */}
+        <div className="relative mb-24">
+          <div className="hidden md:block absolute left-1/2 top-16 h-[calc(100%-8rem)] w-1 bg-gray-200 -translate-x-1/2" />
+          
+          <div className="space-y-20">
+            {steps.map((step, index) => (
+              <div key={index} className="relative">
+                <div className="md:absolute left-1/2 -translate-x-1/2 z-10 mb-4 md:mb-0">
+                  <div className={`${step.color} w-20 h-20 rounded-full flex items-center justify-center mx-auto`}>
+                    {step.icon}
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Contribution Types */}
-          <h2 className="text-3xl font-bold mb-8 text-center">Contribution Roles</h2>
-          <div className="grid gap-8 mb-16">
-            {contributionTypes.map((type, index) => (
-              <Card key={index} className="shadow-sm">
-                <CardHeader>
-                  <CardTitle>{type.title}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-gray-600 mb-4">{type.description}</p>
-                  <h4 className="font-semibold mb-2">What you'll do:</h4>
-                  <ul className="list-disc pl-5 space-y-1 text-gray-700">
-                    {type.tasks.map((task, taskIndex) => (
-                      <li key={taskIndex}>{task}</li>
-                    ))}
-                  </ul>
-                </CardContent>
-              </Card>
+                
+                <div className={`md:grid md:grid-cols-2 md:gap-16 ${index % 2 === 0 ? '' : 'md:flex-row-reverse'}`}>
+                  <div className={`${index % 2 === 0 ? 'md:text-right md:pr-24' : 'md:pl-24'} md:flex md:flex-col md:justify-center`}>
+                    <h3 className="text-2xl font-bold mb-2">{step.title}</h3>
+                    <p className="text-gray-600">{step.description}</p>
+                  </div>
+                  
+                  <div className={`${index % 2 === 0 ? 'md:order-first' : ''} hidden md:block`} />
+                </div>
+              </div>
             ))}
           </div>
+        </div>
 
-          {/* Getting Started CTA */}
-          <div className="bg-gray-50 rounded-xl p-8 text-center">
-            <h2 className="text-2xl font-bold mb-4">Ready to Get Started?</h2>
-            <p className="text-gray-600 mb-6 max-w-lg mx-auto">
-              Join thousands of contributors helping to preserve and promote African languages through technology.
-            </p>
-            <div className="flex flex-col sm:flex-row justify-center gap-4">
-              <Link to="/register">
-                <Button size="lg">Create Account</Button>
-              </Link>
-              <Link to="/languages">
-                <Button variant="outline" size="lg">Explore Languages</Button>
-              </Link>
-            </div>
+        {/* Contribution Types */}
+        <h2 className="text-3xl font-bold mb-8 text-center">Contribution Roles</h2>
+        <div className="grid gap-8 mb-16">
+          {contributionTypes.map((type, index) => (
+            <Card key={index} className="shadow-sm">
+              <CardHeader>
+                <CardTitle>{type.title}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-gray-600 mb-4">{type.description}</p>
+                <h4 className="font-semibold mb-2">What you'll do:</h4>
+                <ul className="list-disc pl-5 space-y-1 text-gray-700">
+                  {type.tasks.map((task, taskIndex) => (
+                    <li key={taskIndex}>{task}</li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* Getting Started CTA */}
+        <div className="bg-gray-50 rounded-xl p-8 text-center">
+          <h2 className="text-2xl font-bold mb-4">Ready to Get Started?</h2>
+          <p className="text-gray-600 mb-6 max-w-lg mx-auto">
+            Join thousands of contributors helping to preserve and promote African languages through technology.
+          </p>
+          <div className="flex flex-col sm:flex-row justify-center gap-4">
+            <Link to="/register">
+              <Button size="lg">Create Account</Button>
+            </Link>
+            <Link to="/languages">
+              <Button variant="outline" size="lg">Explore Languages</Button>
+            </Link>
           </div>
         </div>
       </div>
-    </MainLayout>
+    </div>
   );
 };
 

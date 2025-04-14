@@ -1,53 +1,46 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Mic, Square, Play, Save } from 'lucide-react';
+import { Mic, Square } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 
 interface AudioRecorderProps {
   maxDuration?: number; // in seconds
-  onRecordingComplete?: (audioBlob: Blob) => void;
+  onAudioDataAvailable?: (url: string | null, blob: Blob | null) => void; 
 }
 
 export const AudioRecorder: React.FC<AudioRecorderProps> = ({ 
-  maxDuration = 15,
-  onRecordingComplete 
+  maxDuration = 15, 
+  onAudioDataAvailable,
 }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
-  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
   const timerRef = useRef<number | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  
+
   const startRecording = async () => {
     try {
+      if (onAudioDataAvailable) onAudioDataAvailable(null, null);
       audioChunksRef.current = [];
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       
       mediaRecorder.ondataavailable = (event) => {
-        audioChunksRef.current.push(event.data);
+        if (event.data.size > 0) {
+           audioChunksRef.current.push(event.data);
+        }
       };
       
       mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        const audioUrl = URL.createObjectURL(audioBlob);
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const url = URL.createObjectURL(blob);
         
-        setAudioBlob(audioBlob);
-        setAudioUrl(audioUrl);
-        
-        if (onRecordingComplete) {
-          onRecordingComplete(audioBlob);
+        if (onAudioDataAvailable) {
+            onAudioDataAvailable(url, blob);
         }
-        
-        // Stop all audio tracks
         stream.getTracks().forEach(track => track.stop());
       };
       
@@ -55,16 +48,13 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
       setIsRecording(true);
       setRecordingTime(0);
       
-      // Start timer
       timerRef.current = window.setInterval(() => {
         setRecordingTime(prevTime => {
           const newTime = prevTime + 1;
-          
           if (newTime >= maxDuration) {
             stopRecording();
             return maxDuration;
           }
-          
           return newTime;
         });
       }, 1000);
@@ -78,21 +68,13 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
-      
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
     }
   };
-  
-  const playAudio = () => {
-    if (audioRef.current && audioUrl) {
-      audioRef.current.play();
-      setIsPlaying(true);
-    }
-  };
-  
+
   const formatTime = (timeInSeconds: number) => {
     const minutes = Math.floor(timeInSeconds / 60);
     const seconds = timeInSeconds % 60;
@@ -103,82 +85,52 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({
     return () => {
       if (timerRef.current) {
         clearInterval(timerRef.current);
+        console.log("AudioRecorder unmounted, timer cleared.");
       }
-      
-      if (audioUrl) {
-        URL.revokeObjectURL(audioUrl);
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") { 
+         try {
+             mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+             mediaRecorderRef.current.stop();
+             console.log("AudioRecorder unmounted while recording, stream stopped.");
+         } catch (e) {
+             console.error("Error stopping media recorder on unmount:", e);
+         }
       }
     };
-  }, [audioUrl]);
+  }, []);
   
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col items-center">
-        <div className="w-full mb-4">
-          <div className="flex justify-between text-xs mb-1">
-            <span>Recording: {formatTime(recordingTime)}</span>
-            <span>Max: {formatTime(maxDuration)}</span>
-          </div>
-          <Progress value={(recordingTime / maxDuration) * 100} className="h-2" />
+    <div className="w-full max-w-xs space-y-4 flex flex-col items-center">
+      <div className="w-full mb-2">
+        <div className="flex justify-between text-xs text-muted-foreground mb-1">
+          <span>{formatTime(recordingTime)}</span>
+          <span> / {formatTime(maxDuration)}</span>
         </div>
-        
-        <div className="flex justify-center items-center space-x-4">
-          {!isRecording && !audioBlob && (
-            <Button 
-              onClick={startRecording} 
-              className="h-16 w-16 rounded-full flex items-center justify-center bg-red-500 hover:bg-red-600"
-            >
-              <Mic className="h-6 w-6" />
-            </Button>
-          )}
-          
-          {isRecording && (
-            <Button 
-              onClick={stopRecording} 
-              variant="destructive"
-              className="h-16 w-16 rounded-full flex items-center justify-center"
-            >
-              <Square className="h-5 w-5" />
-            </Button>
-          )}
-          
-          {audioBlob && !isRecording && (
-            <>
-              <Button 
-                onClick={playAudio} 
-                variant="outline"
-                className="h-12 w-12 rounded-full flex items-center justify-center"
-                disabled={isPlaying}
-              >
-                <Play className="h-5 w-5" />
-              </Button>
-              
-              <Button 
-                onClick={startRecording}
-                variant="outline"
-                className="h-12 w-12 rounded-full flex items-center justify-center"
-              >
-                <Mic className="h-5 w-5" />
-              </Button>
-              
-              <Button 
-                className="h-12 w-12 rounded-full flex items-center justify-center bg-afri-orange hover:bg-afri-orange/90"
-              >
-                <Save className="h-5 w-5" />
-              </Button>
-            </>
-          )}
-        </div>
+        <Progress value={(recordingTime / maxDuration) * 100} className="h-2" />
       </div>
       
-      {audioUrl && (
-        <audio 
-          ref={audioRef}
-          src={audioUrl} 
-          onEnded={() => setIsPlaying(false)} 
-          className="hidden"
-        />
-      )}
+      <div className="flex justify-center items-center space-x-4 h-16"> 
+        {!isRecording ? (
+          <Button 
+            onClick={startRecording} 
+            size="icon" 
+            className="h-16 w-16 rounded-full bg-red-500 hover:bg-red-600 text-white"
+            aria-label="Start recording"
+          >
+            <Mic className="h-7 w-7" />
+          </Button>
+        ) : (
+          <Button 
+            onClick={stopRecording} 
+            variant="destructive"
+            size="icon" 
+            className="h-16 w-16 rounded-full"
+            aria-label="Stop recording"
+          >
+            <Square className="h-6 w-6" />
+          </Button>
+        )}
+      </div>
     </div>
   );
 };

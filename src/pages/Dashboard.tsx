@@ -1,6 +1,4 @@
-
 import React, { useEffect, useState } from 'react';
-import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Link, Navigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -11,6 +9,7 @@ import { ASRDashboard } from '@/components/dashboard/roles/ASRDashboard';
 import { TTSDashboard } from '@/components/dashboard/roles/TTSDashboard';
 import { TranscriberDashboard } from '@/components/dashboard/roles/TranscriberDashboard';
 import { ValidatorDashboard } from '@/components/dashboard/roles/ValidatorDashboard';
+import { TranslatorDashboard } from '@/components/dashboard/roles/TranslatorDashboard';
 import { Loader2 } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
@@ -68,6 +67,8 @@ const Dashboard: React.FC = () => {
         return <TranscriberDashboard />;
       case 'validator':
         return <ValidatorDashboard />;
+      case 'translator':
+        return <TranslatorDashboard />;
       default:
         return (
           <div className="text-center py-12">
@@ -107,6 +108,12 @@ const Dashboard: React.FC = () => {
             <Button>Validate</Button>
           </Link>
         );
+      case 'translator':
+        return (
+          <Link to="/translate">
+            <Button>Translate</Button>
+          </Link>
+        );
       default:
         return null;
     }
@@ -123,6 +130,8 @@ const Dashboard: React.FC = () => {
         return 'Transcription Dashboard';
       case 'validator':
         return 'Validation Dashboard';
+      case 'translator':
+        return 'Translation Dashboard';
       default:
         return 'Dashboard';
     }
@@ -134,35 +143,31 @@ const Dashboard: React.FC = () => {
 
   if (loading) {
     return (
-      <MainLayout>
-        <div className="container mx-auto px-4 py-8">
-          <div className="flex justify-center items-center h-64">
-            <Loader2 className="h-8 w-8 animate-spin text-afri-orange" />
-            <p className="ml-2">Loading your dashboard...</p>
-          </div>
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex justify-center items-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-afri-orange" />
+          <p className="ml-2">Loading your dashboard...</p>
         </div>
-      </MainLayout>
+      </div>
     );
   }
 
   return (
-    <MainLayout>
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8">
-          <div>
-            <h1 className="text-2xl font-bold">{getRoleTitle()}</h1>
-            <p className="text-gray-500">Welcome back{userName ? `, ${userName}` : ''} to AfriSpeakNexus</p>
-          </div>
-          <div className="flex space-x-2 mt-4 md:mt-0">
-            {getActionButtons()}
-          </div>
+    <div className="container mx-auto px-4 py-8">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8">
+        <div>
+          <h1 className="text-2xl font-bold">{getRoleTitle()}</h1>
+          <p className="text-gray-500">Welcome back{userName ? `, ${userName}` : ''} to AfriSpeakNexus</p>
         </div>
-
-        <div className="space-y-8">
-          {renderDashboardByRole()}
+        <div className="flex space-x-2 mt-4 md:mt-0">
+          {getActionButtons()}
         </div>
       </div>
-    </MainLayout>
+
+      <div className="space-y-8">
+        {renderDashboardByRole()}
+      </div>
+    </div>
   );
 };
 
