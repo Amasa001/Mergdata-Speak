@@ -1,127 +1,294 @@
-
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Mic, ImageIcon, Languages, Clock } from 'lucide-react';
+import { Mic, Languages, Clock, AlertCircle, Loader2, FileCheck, ListChecks } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+import { Badge } from '@/components/ui/badge';
+
+// Interface for fetched stats
+interface ASRStats {
+  recordingsCompleted: number;
+  languagesCovered: number;
+  pendingValidation: number;
+  // minutesRecorded: number; // Omitted for now
+}
+
+// Interface for available tasks
+interface AvailableTask {
+  id: number;
+  title: string;
+  description: string;
+  language: string;
+}
 
 export const ASRDashboard: React.FC = () => {
-  // Mock data
-  const asrStats = {
-    recordingsCompleted: 28,
-    languagesCovered: 3,
-    minutesRecorded: 75,
-    pendingTasks: 12
-  };
-  
-  const asrTasks = [
-    {
-      id: 1,
-      title: "Daily Scene Descriptions",
-      description: "Record descriptions of everyday scenes in Swahili",
-      count: 10,
-      estimatedTime: "15 min",
-      language: "Swahili",
-      difficulty: "easy"
-    },
-    {
-      id: 2,
-      title: "Action Verbs Collection",
-      description: "Describe actions shown in images to build vocabulary",
-      count: 15,
-      estimatedTime: "20 min",
-      language: "Yoruba",
-      difficulty: "medium"
+  const [stats, setStats] = useState<ASRStats | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [isLoadingStats, setIsLoadingStats] = useState(true);
+  const [statsError, setStatsError] = useState<string | null>(null);
+
+  // State for available tasks
+  const [availableTasks, setAvailableTasks] = useState<AvailableTask[]>([]);
+  const [isLoadingTasks, setIsLoadingTasks] = useState(true);
+  const [tasksError, setTasksError] = useState<string | null>(null);
+
+  // Fetch User ID
+  useEffect(() => {
+    const fetchUser = async () => {
+      setIsLoadingStats(true);
+      setIsLoadingTasks(true);
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError) {
+        console.error("Error fetching user:", userError);
+        const errorMsg = "Could not fetch user information.";
+        setStatsError(errorMsg);
+        setTasksError(errorMsg);
+        setIsLoadingStats(false);
+        setIsLoadingTasks(false);
+        return;
+      }
+      if (user) {
+        setUserId(user.id);
+        // Loading continues in dependent effects
+      } else {
+        const errorMsg = "User not found.";
+        setStatsError(errorMsg);
+        setTasksError(errorMsg);
+        setIsLoadingStats(false);
+        setIsLoadingTasks(false);
+      }
+    };
+    fetchUser();
+  }, []);
+
+  // Fetch ASR Stats based on User ID
+  useEffect(() => {
+    if (!userId) {
+      return;
     }
-  ];
+
+    const fetchStats = async () => {
+      setIsLoadingStats(true);
+      setStatsError(null);
+
+      try {
+        const { data, error: fetchError } = await supabase
+          .from('contributions')
+          .select(`
+            id, 
+            status,
+            tasks!inner (type, language)
+          `)
+          .eq('user_id', userId)
+          .eq('tasks.type', 'asr');
+
+        if (fetchError) {
+          console.error("Error fetching ASR contributions:", fetchError);
+          throw new Error("Failed to fetch your ASR contribution data.");
+        }
+        
+        if (data) {
+          const recordingsCompleted = data.length;
+          const languages = new Set(data.map(c => c.tasks?.language).filter(Boolean));
+          const languagesCovered = languages.size;
+          const pendingValidation = data.filter(c => 
+            c.status === 'pending_validation' || c.status === 'pending_transcript_validation'
+          ).length;
+          
+          setStats({
+            recordingsCompleted,
+            languagesCovered,
+            pendingValidation
+          });
+        } else {
+           setStats({
+            recordingsCompleted: 0,
+            languagesCovered: 0,
+            pendingValidation: 0
+          });
+        }
+      } catch (err) {
+        console.error(err);
+        const errorMsg = err instanceof Error ? err.message : "An unexpected error occurred fetching stats.";
+        setStatsError(errorMsg);
+        toast.error("Error loading your ASR statistics.");
+        setStats(null); // Reset stats on error
+      } finally {
+        setIsLoadingStats(false);
+      }
+    };
+
+    fetchStats();
+  }, [userId]);
+  
+  // Fetch Available ASR Tasks based on User ID
+  useEffect(() => {
+    if (!userId) {
+        return;
+    }
+
+    const fetchAvailableTasks = async () => {
+      setIsLoadingTasks(true);
+      setTasksError(null);
+      try {
+        // Fetch IDs of tasks the user has already contributed to (ASR only)
+        const { data: contributionData, error: contributionError } = await supabase
+          .from('contributions')
+          .select('task_id')
+          .eq('user_id', userId)
+          .not('task_id', 'is', null); // Ensure task_id is not null
+
+        if (contributionError) {
+            console.error("Error fetching user contributions:", contributionError);
+            throw new Error("Could not check your previous contributions.");
+        }
+
+        const contributedTaskIds = contributionData?.map(c => c.task_id) || [];
+        
+        // Fetch active ASR tasks, excluding those already contributed to
+        let query = supabase
+          .from('tasks')
+          .select('id, content, language') // Select necessary fields
+          .eq('type', 'asr')
+          .eq('status', 'pending'); // Corrected status to 'pending'
+
+        // Only add the 'not in' filter if there are contributed tasks
+        if (contributedTaskIds.length > 0) {
+          query = query.not('id', 'in', `(${contributedTaskIds.join(',')})`);
+        }
+
+        const { data: taskData, error: taskError } = await query;
+
+        if (taskError) {
+            console.error("Error fetching available tasks:", taskError);
+            throw new Error("Could not fetch available ASR tasks.");
+        }
+
+        // Map data for display
+        const mappedTasks = taskData?.map(task => ({
+          id: task.id,
+          // Safely access content properties
+          title: (task.content as any)?.task_title || `ASR Task ${task.id}`,
+          description: (task.content as any)?.task_description || 'Describe the associated image.',
+          language: task.language || 'Unknown',
+        })) || [];
+
+        setAvailableTasks(mappedTasks);
+
+      } catch (err) {
+        console.error("Error fetching available ASR tasks:", err);
+        const errorMsg = err instanceof Error ? err.message : "An unexpected error occurred fetching tasks.";
+        setTasksError(errorMsg);
+        toast.error("Error loading available ASR tasks.");
+        setAvailableTasks([]); // Reset tasks on error
+      } finally {
+        setIsLoadingTasks(false);
+      }
+    };
+
+    fetchAvailableTasks();
+  }, [userId]);
 
   return (
     <div className="space-y-6">
       {/* ASR-specific stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="border-none shadow-sm">
+      <Card>
+          <CardHeader>
+              <CardTitle>Your ASR Contribution Stats</CardTitle>
+              <CardDescription>Summary of your automatic speech recognition contributions.</CardDescription>
+          </CardHeader>
+          <CardContent>
+              {isLoadingStats ? (
+                  <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading stats...
+                  </div>
+              ) : statsError ? (
+                  <div className="flex items-center justify-center py-8 text-red-600">
+                     <AlertCircle className="h-6 w-6 mr-2" /> {statsError}
+                  </div>
+              ) : stats ? (
+                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Recordings Card */}
+                    <Card className="border-none shadow-sm bg-blue-50">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium text-gray-500">Recordings</CardTitle>
-              <Mic className="h-5 w-5 text-afri-orange" />
+                          <CardTitle className="text-sm font-medium text-blue-800">Recordings Made</CardTitle>
+                          <Mic className="h-5 w-5 text-blue-600" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{asrStats.recordingsCompleted}</div>
-            <p className="text-xs text-gray-500">Speech samples recorded</p>
+                        <div className="text-2xl font-bold text-blue-900">{stats.recordingsCompleted}</div>
+                        <p className="text-xs text-blue-700">Total ASR samples</p>
           </CardContent>
         </Card>
         
-        <Card className="border-none shadow-sm">
+                    {/* Languages Card */}
+                    <Card className="border-none shadow-sm bg-green-50">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium text-gray-500">Languages</CardTitle>
-              <Languages className="h-5 w-5 text-afri-blue" />
+                          <CardTitle className="text-sm font-medium text-green-800">Languages</CardTitle>
+                          <Languages className="h-5 w-5 text-green-600" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{asrStats.languagesCovered}</div>
-            <p className="text-xs text-gray-500">Language diversity</p>
+                        <div className="text-2xl font-bold text-green-900">{stats.languagesCovered}</div>
+                        <p className="text-xs text-green-700">Distinct languages covered</p>
           </CardContent>
         </Card>
         
-        <Card className="border-none shadow-sm">
+                    {/* Pending Validation Card */}
+                    <Card className="border-none shadow-sm bg-yellow-50">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium text-gray-500">Minutes</CardTitle>
-              <Clock className="h-5 w-5 text-afri-green" />
+                          <CardTitle className="text-sm font-medium text-yellow-800">Pending Validation</CardTitle>
+                          <FileCheck className="h-5 w-5 text-yellow-600" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{asrStats.minutesRecorded}</div>
-            <p className="text-xs text-gray-500">Total recording time</p>
+                        <div className="text-2xl font-bold text-yellow-900">{stats.pendingValidation}</div>
+                        <p className="text-xs text-yellow-700">Recordings awaiting review</p>
+                      </CardContent>
+                    </Card>
+                  </div>
+              ) : (
+                 <div className="text-center py-8 text-gray-500">No statistics available.</div>
+              )}
           </CardContent>
         </Card>
-        
-        <Card className="border-none shadow-sm">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium text-gray-500">Pending</CardTitle>
-              <ImageIcon className="h-5 w-5 text-afri-brown" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{asrStats.pendingTasks}</div>
-            <p className="text-xs text-gray-500">Images waiting for description</p>
-          </CardContent>
-        </Card>
-      </div>
       
-      {/* ASR-specific tasks */}
+      {/* Available ASR Tasks */}
       <Card>
         <CardHeader>
-          <CardTitle>Image Description Tasks</CardTitle>
+          <CardTitle>Available ASR Tasks</CardTitle>
           <CardDescription>
-            Record clear spoken descriptions of these images to improve ASR datasets
+            Contribute by recording descriptions for these tasks.
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {isLoadingTasks ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading tasks...
+            </div>
+          ) : tasksError ? (
+            <div className="flex items-center justify-center py-8 text-red-600">
+              <AlertCircle className="h-6 w-6 mr-2" /> {tasksError}
+            </div>
+          ) : availableTasks.length > 0 ? (
           <div className="space-y-4">
-            {asrTasks.map(task => (
+              {availableTasks.map(task => (
               <div key={task.id} className="p-4 border rounded-md hover:border-afri-orange/50 transition-colors">
                 <div className="flex items-start justify-between">
-                  <div className="flex items-start space-x-3">
-                    <div className="p-2 bg-gray-100 rounded-full">
-                      <ImageIcon className="h-5 w-5 text-afri-orange" />
-                    </div>
-                    <div>
+                    <div className="flex-grow space-y-1 mr-4">
                       <h4 className="font-medium">{task.title}</h4>
                       <p className="text-sm text-gray-500">{task.description}</p>
-                      <div className="flex items-center space-x-2 mt-2">
-                        <span className="text-xs font-medium bg-gray-100 px-2 py-0.5 rounded">
-                          {task.language}
-                        </span>
-                        <span className="text-xs text-gray-500">~{task.estimatedTime}</span>
-                        <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">{task.count} images</span>
+                      <div className="flex items-center space-x-2 pt-1">
+                        <Badge variant="outline">{task.language}</Badge>
                       </div>
                     </div>
-                  </div>
-                  <Link to="/asr">
+                    {/* Link to the main ASR page - assumes it handles task selection */}
+                    <Link to={`/asr`}> 
                     <Button variant="outline" size="sm">
                       Start Recording
                     </Button>
@@ -130,6 +297,12 @@ export const ASRDashboard: React.FC = () => {
               </div>
             ))}
           </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <ListChecks className="h-10 w-10 mx-auto mb-3 text-gray-400" />
+              No new ASR tasks available for you right now.
+            </div>
+          )}
         </CardContent>
       </Card>
       

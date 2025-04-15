@@ -1,84 +1,157 @@
 import React from 'react';
-import { Badge } from '@/components/ui/badge';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
 import { 
-  Calendar, Star, Award, MessageSquare, CheckCircle 
+  Trophy, 
+  Mic, 
+  Languages, 
+  FileText, 
+  CheckCheck,
+  LucideIcon
 } from 'lucide-react';
+import { 
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
-interface ProfileBadgeProps {
-  type: string;
+export type BadgeType = 'asr' | 'tts' | 'translate' | 'transcribe' | 'validate';
+
+export interface BadgeProps {
+  type: BadgeType;
+  level?: 1 | 2 | 3 | 4 | 5; // Level 1-5 (bronze, silver, gold, platinum, diamond)
+  count?: number; // Number of contributions for this badge type
   size?: 'sm' | 'md' | 'lg';
-  showLabel?: boolean;
+  className?: string;
 }
 
-// Updated badge definitions with 5 core types
-const badgeConfig: Record<string, { icon: React.ReactNode, color: string, description: string, label: string }> = {
-  "consistency-contributor": { 
-    icon: <Calendar />, 
-    label: "Consistent Contributor",
-    color: "bg-blue-100 text-blue-800", 
-    description: "Contributed regularly over an extended period."
+const badgeConfig: Record<BadgeType, {
+  icon: LucideIcon, 
+  label: string,
+  description: string,
+  colorClass: string,
+}> = {
+  asr: {
+    icon: Mic,
+    label: 'ASR Contributor',
+    description: 'Contributed to Automatic Speech Recognition tasks',
+    colorClass: 'text-blue-500',
   },
-  "quality-champion": { 
-    icon: <Star />, 
-    label: "Quality Champion",
-    color: "bg-green-100 text-green-800",
-    description: "Maintained high quality ratings across tasks."
+  tts: {
+    icon: Mic,
+    label: 'TTS Contributor',
+    description: 'Contributed to Text-to-Speech generation tasks',
+    colorClass: 'text-purple-500',
   },
-  "prolific-contributor": { 
-    icon: <Award />, 
-    label: "Prolific Contributor",
-    color: "bg-orange-100 text-orange-800",
-    description: "Completed a significant volume of tasks."
+  translate: {
+    icon: Languages,
+    label: 'Translation Contributor',
+    description: 'Contributed to translation tasks',
+    colorClass: 'text-green-500',
   },
-  "language-specialist": { 
-    icon: <MessageSquare />, 
-    label: "Language Specialist",
-    color: "bg-purple-100 text-purple-800", 
-    description: "Demonstrated expertise in a specific language."
+  transcribe: {
+    icon: FileText,
+    label: 'Transcription Contributor',
+    description: 'Contributed to transcription tasks',
+    colorClass: 'text-amber-500',
   },
-  "validator-virtuoso": { 
-    icon: <CheckCircle />, 
-    label: "Validator Virtuoso",
-    color: "bg-indigo-100 text-indigo-800",
-    description: "Excelled in validating contributions accurately."
+  validate: {
+    icon: CheckCheck,
+    label: 'Validation Contributor',
+    description: 'Contributed to validation tasks',
+    colorClass: 'text-red-500',
   }
 };
 
-export const ProfileBadge: React.FC<ProfileBadgeProps> = ({ 
+// Badge level configuration (based on number of contributions)
+const levelConfig = {
+  1: { // Bronze
+    label: 'Bronze',
+    colorClass: 'bg-amber-700',
+    requireCount: 5,
+  },
+  2: { // Silver
+    label: 'Silver',
+    colorClass: 'bg-gray-400',
+    requireCount: 20,
+  },
+  3: { // Gold
+    label: 'Gold',
+    colorClass: 'bg-yellow-400',
+    requireCount: 50,
+  },
+  4: { // Platinum
+    label: 'Platinum',
+    colorClass: 'bg-cyan-400',
+    requireCount: 100,
+  },
+  5: { // Diamond
+    label: 'Diamond',
+    colorClass: 'bg-purple-400',
+    requireCount: 200,
+  },
+};
+
+// Get the badge level based on contribution count
+const getBadgeLevel = (count: number = 0): 1 | 2 | 3 | 4 | 5 => {
+  if (count >= levelConfig[5].requireCount) return 5; // Diamond
+  if (count >= levelConfig[4].requireCount) return 4; // Platinum
+  if (count >= levelConfig[3].requireCount) return 3; // Gold
+  if (count >= levelConfig[2].requireCount) return 2; // Silver
+  return 1; // Bronze
+};
+
+export const ProfileBadge: React.FC<BadgeProps> = ({ 
   type, 
-  size = 'md', 
-  showLabel = false 
+  level: explicitLevel, 
+  count = 0,
+  size = 'md',
+  className 
 }) => {
-  // If badge type is not in our config, return null
-  if (!badgeConfig[type]) return null;
+  // Use provided level or calculate based on count
+  const level = explicitLevel || getBadgeLevel(count);
+  const badgeInfo = badgeConfig[type];
+  const levelInfo = levelConfig[level];
+  const Icon = badgeInfo.icon;
   
-  const { icon, color, description, label } = badgeConfig[type];
-  // const label = type.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-  
-  // Determine icon size based on badge size
-  const iconSizes = {
-    sm: 'h-3 w-3',
-    md: 'h-4 w-4',
-    lg: 'h-5 w-5'
+  // Size classes
+  const sizeClasses = {
+    sm: 'w-8 h-8 text-sm',
+    md: 'w-12 h-12 text-base',
+    lg: 'w-16 h-16 text-lg',
   };
-  
-  const iconWithSize = React.cloneElement(icon as React.ReactElement, {
-    className: iconSizes[size]
-  });
-  
+
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Badge className={`${color} flex items-center gap-1 ${showLabel ? 'px-2 py-0.5' : 'px-1.5 py-0.5'}`}>
-            {iconWithSize}
-            {showLabel && <span className="text-xs font-medium">{label}</span>}
-          </Badge>
+          <div className={cn(
+            'relative rounded-full flex items-center justify-center p-2',
+            'border-2 bg-background shadow-md',
+            badgeInfo.colorClass,
+            sizeClasses[size],
+            className
+          )}>
+            <Icon className="w-5/8 h-5/8" />
+            
+            {/* Level indicator */}
+            <div 
+              className={cn(
+                'absolute -bottom-1 -right-1 rounded-full w-4 h-4 flex items-center justify-center text-[10px] text-white font-bold',
+                levelInfo.colorClass
+              )}
+            >
+              {level}
+            </div>
+          </div>
         </TooltipTrigger>
         <TooltipContent>
-          <p className="text-sm font-medium">{label}</p>
-          <p className="text-xs text-muted-foreground">{description}</p>
+          <div className="text-sm font-medium">{badgeInfo.label}</div>
+          <div className="text-xs text-muted-foreground">{badgeInfo.description}</div>
+          <div className="text-xs mt-1">
+            <span className="font-semibold">{levelInfo.label} Level</span>
+            {count > 0 && <span> · {count} contributions</span>}
+          </div>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

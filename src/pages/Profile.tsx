@@ -27,11 +27,11 @@ const Profile: React.FC = () => {
   });
   const [saveSuccess, setSaveSuccess] = useState(false);
   
-  // Use the 5 core badges for mock data
-  const userBadges = [
-    "quality-champion",
-    "prolific-contributor",
-    "consistency-contributor"
+  // Use valid badge types from the BadgeType definition
+  const userBadges: ('asr' | 'tts' | 'translate' | 'transcribe' | 'validate')[] = [
+    "asr",
+    "tts",
+    "translate"
   ];
   
   // Mock user stats - in a real app, these would come from the database
@@ -44,10 +44,31 @@ const Profile: React.FC = () => {
 
   useEffect(() => {
     async function fetchProfile() {
+      console.log("Starting profile fetch...");
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        // Check authentication
+        const { data, error: sessionError } = await supabase.auth.getSession();
+        console.log("Session check:", data);
+        
+        if (sessionError) {
+          console.error("Session error:", sessionError);
+          toast.error("Authentication error");
+          navigate('/login');
+          return;
+        }
+        
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        console.log("User data:", user);
+        
+        if (userError) {
+          console.error("User fetch error:", userError);
+          toast.error("Couldn't get user data");
+          navigate('/login');
+          return;
+        }
         
         if (!user) {
+          console.log("No user found, redirecting to login");
           navigate('/login');
           return;
         }
@@ -55,15 +76,55 @@ const Profile: React.FC = () => {
         setUser(user);
         
         // Fetch user profile
+        console.log("Fetching profile for user ID:", user.id);
         const { data: profileData, error } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', user.id)
           .single();
           
+        console.log("Profile data:", profileData);
+        console.log("Profile error:", error);
+          
         if (error) {
           console.error('Error fetching profile:', error);
-          toast.error('Failed to load your profile');
+          
+          // Check if error is because profile doesn't exist
+          if (error.code === 'PGRST116') {
+            console.log("Profile doesn't exist, creating one now");
+            
+            // Try to create a profile
+            const { data: newProfile, error: insertError } = await supabase
+              .from('profiles')
+              .insert({
+                id: user.id,
+                full_name: user.user_metadata?.full_name || '',
+                role: '',
+                languages: [],
+                is_admin: false
+              })
+              .select()
+              .single();
+              
+            if (insertError) {
+              console.error("Failed to create profile:", insertError);
+              toast.error("Couldn't create your profile");
+            } else {
+              console.log("Created new profile:", newProfile);
+              toast.success("Profile created successfully!");
+              
+              // Set profile with newly created data
+              setProfile({
+                fullName: newProfile.full_name || '',
+                email: user.email || '',
+                role: newProfile.role || '',
+                languages: newProfile.languages || [],
+                avatarUrl: user.user_metadata?.avatar_url || ''
+              });
+            }
+          } else {
+            toast.error('Failed to load your profile');
+          }
         } else if (profileData) {
           setProfile({
             fullName: profileData.full_name || '',
@@ -72,12 +133,23 @@ const Profile: React.FC = () => {
             languages: profileData.languages || [],
             avatarUrl: user.user_metadata?.avatar_url || ''
           });
+          console.log("Profile state set:", {
+            fullName: profileData.full_name || '',
+            email: user.email || '',
+            role: profileData.role || '',
+            languages: profileData.languages || [],
+            avatarUrl: user.user_metadata?.avatar_url || ''
+          });
+        } else {
+          console.error('No profile data found for user');
+          toast.error('Profile not found');
         }
       } catch (error) {
-        console.error('Error:', error);
+        console.error('Exception during profile fetch:', error);
         toast.error('Something went wrong');
       } finally {
         setLoading(false);
+        console.log("Profile loading complete");
       }
     }
     
@@ -108,6 +180,11 @@ const Profile: React.FC = () => {
     e.preventDefault();
     setUpdating(true);
     setSaveSuccess(false);
+    console.log("Updating profile with:", {
+      full_name: profile.fullName,
+      role: profile.role,
+      languages: profile.languages
+    });
     
     try {
       const { error } = await supabase
@@ -119,8 +196,12 @@ const Profile: React.FC = () => {
         })
         .eq('id', user.id);
         
-      if (error) throw error;
+      if (error) {
+        console.error("Profile update error:", error);
+        throw error;
+      }
       
+      console.log("Profile updated successfully");
       setSaveSuccess(true);
       toast.success('Profile updated successfully!');
     } catch (error: any) {
@@ -167,7 +248,7 @@ const Profile: React.FC = () => {
                 </div>
                 <div className="text-center mt-4">
                   <CardTitle className="text-xl">{profile.fullName}</CardTitle>
-                  <CardDescription>{profile.role.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}</CardDescription>
+                  <CardDescription>{profile.role ? profile.role.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ') : 'No role set'}</CardDescription>
                 </div>
               </CardHeader>
               
@@ -208,7 +289,7 @@ const Profile: React.FC = () => {
                     </div>
                     <div className="flex flex-wrap gap-2 mt-3">
                       {userBadges.map(badge => (
-                        <ProfileBadge key={badge} type={badge} showLabel={true} />
+                        <ProfileBadge key={badge} type={badge} count={20} />
                       ))}
                     </div>
                   </div>

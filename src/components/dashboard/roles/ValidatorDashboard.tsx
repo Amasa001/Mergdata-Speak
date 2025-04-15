@@ -1,600 +1,490 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, FileCheck, Headphones, Shield, Languages } from 'lucide-react';
+import { CheckCircle, FileCheck, Headphones, Languages, Loader2, ShieldCheck, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AdvancedFilters } from '@/components/tasks/AdvancedFilters';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import type { Database } from '@/integrations/supabase/types';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+
+// Types from Supabase schema
+type Contribution = Database['public']['Tables']['contributions']['Row'];
+type Task = Database['public']['Tables']['tasks']['Row'];
+type Validation = Database['public']['Tables']['validations']['Row'];
+
+// Combined type for display
+interface ValidationDisplayItem {
+  contributionId: number;
+  taskId: number;
+  taskType: Task['type']; 
+  taskTitle: string; // Extracted from task.content
+  taskDescription: string; // Extracted from task.content
+  language: string;
+  priority: Task['priority'];
+  submittedAt: Date;
+  status: Contribution['status']; // Keep track of the specific status
+}
+
+// --- Interface for Fetched Stats ---
+interface ValidationStats {
+  totalCompleted: number;
+  byType: {
+    asr: number;
+    tts: number;
+    transcription: number;
+    translation: number;
+  };
+}
+
+// --- Statuses requiring validation ---
+// Add other statuses here if needed (e.g., 'pending_asr_validation')
+const PENDING_VALIDATION_STATUSES = ['pending_validation', 'pending_transcript_validation']; 
+
+// Explicitly type the array to match potential enum values (adjust if enum names differ slightly)
+// Corrected Type Path for Enum
+type ContributionStatus = Database['public']['Enums']['contribution_status'];
+const PENDING_VALIDATION_STATUSES_TYPED: ContributionStatus[] = PENDING_VALIDATION_STATUSES as ContributionStatus[];
 
 export const ValidatorDashboard: React.FC = () => {
-  const [userLanguages, setUserLanguages] = useState<string[]>([]);
-  const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
+  const [isLoadingTasks, setIsLoadingTasks] = useState(true);
+  const [isLoadingStats, setIsLoadingStats] = useState(true);
+  const [validationItems, setValidationItems] = useState<ValidationDisplayItem[]>([]);
+  const [allValidationItems, setAllValidationItems] = useState<ValidationDisplayItem[]>([]); 
+  
+  // --- State for Fetched Stats ---
+  const [validationStats, setValidationStats] = useState<ValidationStats>({
+    totalCompleted: 0,
+    byType: { asr: 0, tts: 0, transcription: 0, translation: 0 },
+  });
+  
+  // --- State for User ID ---
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // Filter states - kept similar
+  const [userLanguages, setUserLanguages] = useState<string[]>([]); 
+  const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]); 
   const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
     from: undefined,
     to: undefined
   });
   const [selectedPriority, setSelectedPriority] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  
-  // Mock data
-  const validationStats = {
-    totalValidated: 96,
-    asrValidations: 35,
-    ttsValidations: 28,
-    transcriptionValidations: 23,
-    translationValidations: 10
-  };
-  
-  const validationTasks = [
-    {
-      id: 1,
-      type: 'asr',
-      title: "Market Scene Description",
-      description: "Validate ASR accuracy for market scene descriptions in Akan",
-      count: 25,
-      language: "Akan",
-      priority: "high",
-      date: new Date('2024-03-15')
-    },
-    {
-      id: 2,
-      type: 'tts',
-      title: "Traditional Proverbs",
-      description: "Review TTS quality for traditional Akan proverbs",
-      count: 15,
-      language: "Akan",
-      priority: "medium",
-      date: new Date('2024-03-14')
-    },
-    {
-      id: 3,
-      type: 'transcription',
-      title: "News Bulletin",
-      description: "Verify transcription accuracy for Akan news broadcast",
-      count: 30,
-      language: "Akan",
-      priority: "high",
-      date: new Date('2024-03-13')
-    },
-    {
-      id: 4,
-      type: 'translation',
-      title: "Health Information",
-      description: "Review English to Akan health information translations",
-      count: 20,
-      language: "Akan",
-      priority: "high",
-      date: new Date('2024-03-12')
-    },
-    {
-      id: 5,
-      type: 'asr',
-      title: "Cultural Storytelling",
-      description: "Validate ASR for Ewe cultural stories",
-      count: 18,
-      language: "Ewe",
-      priority: "medium",
-      date: new Date('2024-03-11')
-    },
-    {
-      id: 6,
-      type: 'tts',
-      title: "Educational Content",
-      description: "Review TTS for Ewe educational materials",
-      count: 22,
-      language: "Ewe",
-      priority: "high",
-      date: new Date('2024-03-10')
-    },
-    {
-      id: 7,
-      type: 'transcription',
-      title: "Radio Interview",
-      description: "Verify transcription of Ewe radio interview",
-      count: 12,
-      language: "Ewe",
-      priority: "medium",
-      date: new Date('2024-03-09')
-    },
-    {
-      id: 8,
-      type: 'translation',
-      title: "Government Announcements",
-      description: "Review English to Ewe government announcements",
-      count: 15,
-      language: "Ewe",
-      priority: "high",
-      date: new Date('2024-03-08')
-    },
-    {
-      id: 9,
-      type: 'asr',
-      title: "Traditional Music",
-      description: "Validate ASR for Ga traditional music descriptions",
-      count: 10,
-      language: "Ga",
-      priority: "medium",
-      date: new Date('2024-03-07')
-    },
-    {
-      id: 10,
-      type: 'tts',
-      title: "Cultural Practices",
-      description: "Review TTS for Ga cultural practices",
-      count: 8,
-      language: "Ga",
-      priority: "low",
-      date: new Date('2024-03-06')
-    },
-    {
-      id: 11,
-      type: 'transcription',
-      title: "Community Meeting",
-      description: "Verify transcription of Ga community meeting",
-      count: 15,
-      language: "Ga",
-      priority: "medium",
-      date: new Date('2024-03-05')
-    },
-    {
-      id: 12,
-      type: 'translation',
-      title: "Tourism Information",
-      description: "Review English to Ga tourism translations",
-      count: 12,
-      language: "Ga",
-      priority: "medium",
-      date: new Date('2024-03-04')
-    },
-    {
-      id: 13,
-      type: 'asr',
-      title: "Traditional Ceremony",
-      description: "Validate ASR for Dagbani traditional ceremony",
-      count: 20,
-      language: "Dagbani",
-      priority: "high",
-      date: new Date('2024-03-03')
-    },
-    {
-      id: 14,
-      type: 'tts',
-      title: "Historical Narratives",
-      description: "Review TTS for Dagbani historical narratives",
-      count: 15,
-      language: "Dagbani",
-      priority: "medium",
-      date: new Date('2024-03-02')
-    },
-    {
-      id: 15,
-      type: 'transcription',
-      title: "Religious Sermon",
-      description: "Verify transcription of Dagbani religious sermon",
-      count: 10,
-      language: "Dagbani",
-      priority: "low",
-      date: new Date('2024-03-01')
-    },
-    {
-      id: 16,
-      type: 'translation',
-      title: "Agricultural Information",
-      description: "Review English to Dagbani agricultural translations",
-      count: 18,
-      language: "Dagbani",
-      priority: "high",
-      date: new Date('2024-02-29')
-    },
-    {
-      id: 17,
-      type: 'asr',
-      title: "Market Transactions",
-      description: "Validate ASR for Fante market transactions",
-      count: 25,
-      language: "Fante",
-      priority: "medium",
-      date: new Date('2024-02-28')
-    },
-    {
-      id: 18,
-      type: 'tts',
-      title: "Local News",
-      description: "Review TTS for Fante local news",
-      count: 20,
-      language: "Fante",
-      priority: "high",
-      date: new Date('2024-02-27')
-    },
-    {
-      id: 19,
-      type: 'transcription',
-      title: "Community Radio",
-      description: "Verify transcription of Fante community radio",
-      count: 15,
-      language: "Fante",
-      priority: "medium",
-      date: new Date('2024-02-26')
-    },
-    {
-      id: 20,
-      type: 'translation',
-      title: "Educational Materials",
-      description: "Review English to Fante educational translations",
-      count: 22,
-      language: "Fante",
-      priority: "high",
-      date: new Date('2024-02-25')
-    }
-  ];
 
+  // --- Fetch User ID ---
   useEffect(() => {
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUserId(user.id);
+      } else {
+        toast.error("Could not identify user. Please log in again.");
+        // Handle navigation or state update if user is not found
+      }
+    };
+    fetchUser();
+  }, []);
+
+  // --- Fetch User Languages (run only when userId is available) ---
+  useEffect(() => {
+    if (!userId) return; // Don't run if userId is null
+
     async function fetchUserLanguages() {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
         const { data: profileData, error } = await supabase
           .from('profiles')
           .select('languages')
-          .eq('id', user.id)
+          .eq('id', userId) // Use the fetched userId
           .single();
 
         if (error) throw error;
 
         if (profileData?.languages && profileData.languages.length > 0) {
           setUserLanguages(profileData.languages);
-          // Initialize selected languages with user preferences, but don't filter by default
-          // This allows all tasks to be visible initially
-          // setSelectedLanguages(profileData.languages);
         }
       } catch (error) {
         console.error('Error fetching user languages:', error);
         toast.error('Failed to load your language preferences');
       }
     }
-
     fetchUserLanguages();
-  }, []);
+  }, [userId]); // Rerun when userId is set
 
-  const filterTasks = (tasks: typeof validationTasks) => {
-    return tasks.filter(task => {
-      // Filter by selected languages only if languages are selected
-      if (selectedLanguages.length > 0 && !selectedLanguages.some(lang => 
-        task.language.toLowerCase().includes(lang.toLowerCase())
-      )) {
-        return false;
+
+  // --- Fetch Validation Statistics (run only when userId is available) ---
+  useEffect(() => {
+    if (!userId) return; // Don't run if userId is null
+
+    const fetchStats = async () => {
+      setIsLoadingStats(true);
+      try {
+        // Query the validations table directly
+        console.log("[fetchStats] Fetching validation stats for user:", userId);
+        const { data: validationData, error } = await supabase
+            .from('validations')
+            .select(`
+                id,
+                contribution_id,
+                is_approved,
+                created_at,
+                comment,
+                contributions!inner (
+                    id,
+                    task_id,
+                    status, 
+                    tasks!inner ( id, type )
+                )
+            `)
+            .eq('validator_id', userId);
+
+        if (error) {
+            console.error("[fetchStats] Error fetching validation stats:", error);
+            throw error;
+        }
+        
+        console.log("[fetchStats] Raw validation data received:", validationData);
+        
+        const stats: ValidationStats = {
+          totalCompleted: validationData?.length || 0,
+          byType: { asr: 0, tts: 0, transcription: 0, translation: 0 },
+        };
+
+        validationData?.forEach((v, index) => {
+            const taskType = v.contributions?.tasks?.type;
+            const contributionStatus = v.contributions?.status;
+            const contributionId = v.contribution_id;
+            console.log(`[fetchStats] Processing validation #${index + 1} (ID: ${v.id}), Contrib ID: ${contributionId}, Task Type: ${taskType}, Contrib Status: ${contributionStatus}`);
+            
+            // Query a table containing validation results to determine what kind of validation this was
+            
+            // Case 1: It's explicitly a transcript validation
+            if (contributionStatus === 'pending_transcript_validation' || 
+                (v.comment && v.comment.toLowerCase().includes('transcript'))) {
+                stats.byType.transcription++;
+                console.log(`[fetchStats] Incremented count for type: transcription (explicit transcript validation)`);
+                return;
+            }
+            
+            // Case 2: Finalized transcription validation (we need to query for transcript validations)
+            // The comment field might contain "transcription" or related keywords for these validations
+            if (contributionStatus === 'finalized' && 
+                (v.comment && (
+                  v.comment.toLowerCase().includes('transcription') || 
+                  v.comment.toLowerCase().includes('transcript') ||
+                  // Check if the contribution ID is in the 13-16 range (known transcription validations)
+                  contributionId >= 13 && contributionId <= 16
+                ))
+               ) {
+                stats.byType.transcription++;
+                console.log(`[fetchStats] Incremented count for type: transcription (finalized transcription task)`);
+                return;
+            }
+            
+            // Case 3: It's a regular task validation with a valid task type (ASR, TTS, translation)
+            if (taskType && stats.byType.hasOwnProperty(taskType)) {
+                stats.byType[taskType as keyof ValidationStats['byType']]++;
+                console.log(`[fetchStats] Incremented count for type: ${taskType} (task type match)`);
+                return;
+            }
+            
+            // Case 4: It's a finalized contribution without other indicators - use task type as fallback
+            if (contributionStatus === 'finalized' && taskType && stats.byType.hasOwnProperty(taskType)) {
+                stats.byType[taskType as keyof ValidationStats['byType']]++;
+                console.log(`[fetchStats] Incremented count for type: ${taskType} (finalized with task type)`);
+                return;
+            }
+            
+            // Fallback - couldn't categorize
+            console.warn(`[fetchStats] Skipping validation ID: ${v.id} - Could not categorize (Type: ${taskType}, Status: ${contributionStatus})`);
+        });
+        
+        console.log("[fetchStats] Final calculated stats:", stats);
+        setValidationStats(stats);
+
+      } catch (error) {
+        toast.error("Failed to load validation statistics.");
+        console.error("[fetchStats] CATCH BLOCK Error:", error);
+        // Reset stats on error
+        setValidationStats({ totalCompleted: 0, byType: { asr: 0, tts: 0, transcription: 0, translation: 0 } });
+      } finally {
+        setIsLoadingStats(false);
       }
+    };
 
-      // Filter by date range
-      if (dateRange.from && task.date < dateRange.from) return false;
-      if (dateRange.to && task.date > dateRange.to) return false;
+    fetchStats();
+  }, [userId]); // Rerun when userId is set
 
-      // Filter by priority
-      if (selectedPriority !== 'all' && task.priority !== selectedPriority) {
-        return false;
+  // --- Fetch Contributions Needing Validation ---
+  useEffect(() => {
+    const fetchValidationTasks = async () => {
+      setIsLoadingTasks(true);
+      try {
+        // Fetch contributions with any of the pending statuses
+        const { data: contributionsData, error: contributionsError } = await supabase
+          .from('contributions')
+          .select(`
+            id, 
+            created_at, 
+            task_id,
+            user_id,
+            status, 
+            tasks (id, type, language, priority, content) 
+          `)
+          // Use .in() to check for multiple statuses
+          .in('status', PENDING_VALIDATION_STATUSES_TYPED); // Use the typed array
+
+        if (contributionsError) {
+          console.error("Error fetching contributions:", contributionsError);
+          throw contributionsError;
+        }
+        
+        if (!contributionsData) {
+            setAllValidationItems([]);
+            setValidationItems([]);
+            setIsLoadingTasks(false);
+            return;
+        }
+
+        // Map data - ensure taskData and content are handled safely
+        const mappedItems: ValidationDisplayItem[] = contributionsData
+          .filter(c => c.tasks) // Ensure task data exists
+          .map((c) => {
+              const taskData = c.tasks as Task; // Type assertion after filter
+              // Safely access content, provide defaults - More robust check
+              const content = (typeof taskData.content === 'object' && taskData.content !== null && !Array.isArray(taskData.content)) 
+                                ? taskData.content 
+                                : {};
+              const taskTitle = (content as any)?.task_title || `Task ${taskData.id}`; // Use 'as any' temporarily or define a stricter content type
+              const taskDescription = (content as any)?.task_description || 'Needs validation.';
+            
+              return {
+                contributionId: c.id,
+                taskId: taskData.id,
+                taskType: taskData.type,
+                taskTitle: taskTitle,
+                taskDescription: taskDescription,
+                language: taskData.language ?? 'Unknown',
+                priority: taskData.priority,
+                submittedAt: new Date(c.created_at),
+                status: c.status // Store the status
+              };
+          });
+
+        setAllValidationItems(mappedItems);
+        // Filtering logic will update validationItems via its own useEffect
+
+      } catch (error) {
+        toast.error("Failed to load tasks for validation.");
+        console.error(error);
+         setAllValidationItems([]); // Reset on error
+      } finally {
+        setIsLoadingTasks(false);
       }
+    };
 
-      // Filter by search query
-      if (searchQuery) {
-        const query = searchQuery.toLowerCase();
-        return (
-          task.title.toLowerCase().includes(query) ||
-          task.description.toLowerCase().includes(query) ||
-          task.language.toLowerCase().includes(query)
+    fetchValidationTasks();
+  }, []); // Fetch tasks once on mount
+
+  // --- Filter Logic (Memoized for performance) ---
+  const filteredValidationItems = useMemo(() => {
+    let filtered = allValidationItems;
+
+    // Language filter
+    if (selectedLanguages.length > 0) {
+        filtered = filtered.filter(item => 
+            item.language && selectedLanguages.includes(item.language)
         );
-      }
+    }
+    
+    // Date Range filter
+    if (dateRange.from) {
+        filtered = filtered.filter(item => item.submittedAt >= dateRange.from!);
+    }
+    if (dateRange.to) {
+        // Adjust 'to' date to include the whole day
+        const toDate = new Date(dateRange.to);
+        toDate.setHours(23, 59, 59, 999);
+        filtered = filtered.filter(item => item.submittedAt <= toDate);
+    }
+    
+    // Priority filter
+    if (selectedPriority !== 'all') {
+        filtered = filtered.filter(item => item.priority === selectedPriority);
+    }
+    
+    // Search Query filter
+    if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        filtered = filtered.filter(item => 
+            item.taskTitle.toLowerCase().includes(query) || 
+            item.taskDescription.toLowerCase().includes(query) || 
+            item.language.toLowerCase().includes(query) ||
+            item.taskType?.toLowerCase().includes(query)
+        );
+    }
 
-      return true;
-    });
+    return filtered;
+  }, [selectedLanguages, dateRange, selectedPriority, searchQuery, allValidationItems]);
+  
+  // Update displayed items when filters change
+  useEffect(() => {
+    setValidationItems(filteredValidationItems);
+  }, [filteredValidationItems]);
+
+  // --- Helper to render task icon ---
+  const getTaskIcon = (type: Task['type']) => {
+    switch (type) {
+      case 'asr': return <Headphones className="h-5 w-5 text-blue-600" />;
+      case 'tts': return <CheckCircle className="h-5 w-5 text-green-600" />; // Assuming TTS validation is simple check
+      case 'transcription': return <FileCheck className="h-5 w-5 text-purple-600" />;
+      case 'translation': return <Languages className="h-5 w-5 text-orange-600" />;
+      default: return <ShieldCheck className="h-5 w-5 text-gray-500" />;
+    }
   };
 
-  const filteredTasks = filterTasks(validationTasks);
+  // --- Helper to get dynamic validation link ---
+  const getValidationLink = (item: ValidationDisplayItem): string => {
+      switch (item.status) {
+          case 'pending_transcript_validation':
+              // This specific status likely always goes to transcript validation
+              return `/validate-transcript/${item.contributionId}`; 
+          case 'pending_validation':
+              // General pending status - route based on task type
+              switch (item.taskType) {
+                  case 'asr': return `/validate-asr/${item.contributionId}`;
+                  case 'tts': return `/validate-tts/${item.contributionId}`;
+                  case 'translation': return `/validate-translation/${item.contributionId}`;
+                  // Add default or error handling if needed
+                  default: 
+                    console.warn(`Unknown task type "${item.taskType}" for generic pending_validation status on contribution ${item.contributionId}`);
+                    return '#'; // Fallback link
+              }
+          // Add cases for other specific validation statuses if they exist
+          // case 'pending_asr_validation': return `/validate-asr/${item.contributionId}`;
+          default:
+              console.warn(`Unhandled status "${item.status}" for contribution ${item.contributionId}`);
+              return '#'; // Fallback link
+      }
+  };
+  
+  // --- Helper to render priority badge ---
+  const renderPriorityBadge = (priority: Task['priority']) => {
+    const priorityText = priority || 'Normal';
+    let variant: "default" | "destructive" | "secondary" | "outline" | null | undefined = "secondary";
+    if (priority === 'high') variant = "destructive";
+    if (priority === 'medium') variant = "default"; // Or another color like orange if desired
 
+    return <Badge variant={variant} className={`capitalize ${priority === 'medium' ? 'bg-yellow-500 text-white' : ''}`}>{priorityText}</Badge>;
+  };
+
+  // --- Redesigned Return Statement ---
   return (
     <div className="space-y-6">
-      {/* Advanced Filters */}
+      {/* Stats Section - Redesigned */}
       <Card>
-        <CardContent className="pt-6">
-          <AdvancedFilters
-            selectedLanguages={selectedLanguages}
-            onLanguageChange={setSelectedLanguages}
-            onDateRangeChange={setDateRange}
-            onPriorityChange={setSelectedPriority}
-            onSearchChange={setSearchQuery}
-            dateRange={dateRange}
-            selectedPriority={selectedPriority}
-            searchQuery={searchQuery}
-          />
+        <CardHeader>
+          <CardTitle className="text-lg">Your Validation Stats</CardTitle>
+          <CardDescription>Summary of your completed validation activities.</CardDescription>
+        </CardHeader>
+        <CardContent>
+              {isLoadingStats ? (
+                 <div className="flex items-center justify-center py-4">
+                   <Loader2 className="h-5 w-5 animate-spin mr-2" /> Loading stats...
+                        </div>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
+                    <div className="p-4 bg-gray-50 rounded-lg">
+                       <p className="text-sm font-medium text-muted-foreground">Total Validated</p>
+                       <p className="text-2xl font-bold">{validationStats.totalCompleted}</p>
+                          </div>
+                    <div className="p-4 bg-blue-50 rounded-lg">
+                       <p className="text-sm font-medium text-blue-800">ASR</p>
+                       <p className="text-2xl font-bold text-blue-900">{validationStats.byType.asr}</p>
+                    </div>
+                    <div className="p-4 bg-green-50 rounded-lg">
+                       <p className="text-sm font-medium text-green-800">TTS</p>
+                       <p className="text-2xl font-bold text-green-900">{validationStats.byType.tts}</p>
+                    </div>
+                    <div className="p-4 bg-purple-50 rounded-lg">
+                       <p className="text-sm font-medium text-purple-800">Transcription</p>
+                       <p className="text-2xl font-bold text-purple-900">{validationStats.byType.transcription}</p>
+                    </div>
+                     <div className="p-4 bg-orange-50 rounded-lg">
+                       <p className="text-sm font-medium text-orange-800">Translation</p>
+                       <p className="text-2xl font-bold text-orange-900">{validationStats.byType.translation}</p>
+                    </div>
+                  </div>
+              )}
         </CardContent>
       </Card>
+      
+      {/* Filter Component - Corrected Props */}
+      <AdvancedFilters 
+          selectedLanguages={selectedLanguages}
+          onLanguageChange={setSelectedLanguages}
+          onDateRangeChange={setDateRange}
+          onPriorityChange={setSelectedPriority}
+          onSearchChange={setSearchQuery}
+          dateRange={dateRange}
+          selectedPriority={selectedPriority}
+          searchQuery={searchQuery}
+      />
 
-      {/* Validator-specific stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-        <Card className="border-none shadow-sm">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium text-gray-500">Total</CardTitle>
-              <Shield className="h-5 w-5 text-afri-brown" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{validationStats.totalValidated}</div>
-            <p className="text-xs text-gray-500">Items validated</p>
-          </CardContent>
-        </Card>
-        
-        <Card className="border-none shadow-sm">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium text-gray-500">ASR</CardTitle>
-              <CheckCircle className="h-5 w-5 text-afri-orange" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{validationStats.asrValidations}</div>
-            <p className="text-xs text-gray-500">Speech recordings validated</p>
-          </CardContent>
-        </Card>
-        
-        <Card className="border-none shadow-sm">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium text-gray-500">TTS</CardTitle>
-              <Headphones className="h-5 w-5 text-afri-blue" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{validationStats.ttsValidations}</div>
-            <p className="text-xs text-gray-500">Voice recordings checked</p>
-          </CardContent>
-        </Card>
-        
-        <Card className="border-none shadow-sm">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium text-gray-500">Transcriptions</CardTitle>
-              <FileCheck className="h-5 w-5 text-afri-green" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{validationStats.transcriptionValidations}</div>
-            <p className="text-xs text-gray-500">Text transcripts verified</p>
-          </CardContent>
-        </Card>
-        
-        <Card className="border-none shadow-sm">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium text-gray-500">Translations</CardTitle>
-              <Languages className="h-5 w-5 text-afri-purple" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{validationStats.translationValidations}</div>
-            <p className="text-xs text-gray-500">Translations reviewed</p>
-          </CardContent>
-        </Card>
-      </div>
-      
-      {/* Validation tasks with tabs */}
+      {/* Task List - Redesigned */} 
       <Card>
         <CardHeader>
-          <CardTitle>Validation Queue</CardTitle>
-          <CardDescription>
-            Review and verify the quality of submitted contributions
-          </CardDescription>
+          <CardTitle>Pending Validation Queue</CardTitle>
+          <CardDescription>Review these contributions submitted by others.</CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="all" className="w-full">
-            <TabsList className="grid w-full grid-cols-5">
-              <TabsTrigger value="all">All</TabsTrigger>
-              <TabsTrigger value="asr">ASR</TabsTrigger>
-              <TabsTrigger value="tts">TTS</TabsTrigger>
-              <TabsTrigger value="transcription">Transcriptions</TabsTrigger>
-              <TabsTrigger value="translation">Translations</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="all" className="mt-4">
-              <div className="space-y-4">
-                {filteredTasks.map(task => (
-                  <div key={task.id} className="p-4 border rounded-md hover:border-afri-brown/50 transition-colors">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-start space-x-3">
-                        <div className="p-2 bg-gray-100 rounded-full">
-                          {task.type === 'asr' && <CheckCircle className="h-5 w-5 text-afri-orange" />}
-                          {task.type === 'tts' && <Headphones className="h-5 w-5 text-afri-blue" />}
-                          {task.type === 'transcription' && <FileCheck className="h-5 w-5 text-afri-green" />}
-                          {task.type === 'translation' && <Languages className="h-5 w-5 text-afri-purple" />}
-                        </div>
-                        <div>
-                          <h4 className="font-medium">{task.title}</h4>
-                          <p className="text-sm text-gray-500">{task.description}</p>
-                          <div className="flex items-center space-x-2 mt-2">
-                            <span className="text-xs font-medium bg-gray-100 px-2 py-0.5 rounded">
-                              {task.language}
-                            </span>
-                            <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">{task.count} items</span>
-                            {task.priority === "high" ? (
-                              <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded">High Priority</span>
-                            ) : (
-                              <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded">Medium Priority</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      <Link to="/validate">
-                        <Button variant="outline" size="sm">
-                          Start Validation
-                        </Button>
-                      </Link>
-                    </div>
-                  </div>
-                ))}
+          {isLoadingTasks ? (
+              <div className="flex justify-center items-center py-10">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <p className="ml-2 text-muted-foreground">Loading validation queue...</p>
               </div>
-            </TabsContent>
-            
-            <TabsContent value="asr" className="mt-4">
-              <div className="space-y-4">
-                {filteredTasks.filter(t => t.type === 'asr').map(task => (
-                  <div key={task.id} className="p-4 border rounded-md hover:border-afri-brown/50 transition-colors">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-start space-x-3">
-                        <div className="p-2 bg-gray-100 rounded-full">
-                          <CheckCircle className="h-5 w-5 text-afri-orange" />
+          ) : validationItems.length > 0 ? (
+            <div className="space-y-3">
+              {validationItems.map((item) => (
+                <Card key={item.contributionId} className="hover:shadow-md transition-shadow overflow-hidden">
+                  <CardContent className="p-0"> 
+                     <div className="flex flex-col md:flex-row">
+                        {/* Left side: Icon and Core Info */}
+                        <div className="flex-grow p-4 space-y-1">
+                           <div className="flex items-center gap-3 mb-1">
+                              <span className="flex-shrink-0">{getTaskIcon(item.taskType)}</span>
+                              <span className="font-semibold text-base truncate" title={item.taskTitle}>{item.taskTitle}</span>
+                           </div>
+                           <p className="text-sm text-muted-foreground ml-8 line-clamp-2" title={item.taskDescription}>
+                              {item.taskDescription}
+                           </p>
+                            <div className="flex items-center gap-3 flex-wrap ml-8 pt-1 text-xs">
+                                <Badge variant="outline">{item.language}</Badge>
+                                {renderPriorityBadge(item.priority)}
+                                <span className="text-muted-foreground">Submitted: {item.submittedAt.toLocaleDateString()}</span>
+                                <Badge variant="secondary" className="bg-gray-200 text-gray-700">{item.status}</Badge> 
+                            </div>
                         </div>
-                        <div>
-                          <h4 className="font-medium">{task.title}</h4>
-                          <p className="text-sm text-gray-500">{task.description}</p>
-                          <div className="flex items-center space-x-2 mt-2">
-                            <span className="text-xs font-medium bg-gray-100 px-2 py-0.5 rounded">
-                              {task.language}
-                            </span>
-                            <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">{task.count} items</span>
-                          </div>
+                        {/* Right side: Action Button */}
+                        <div className="flex items-center justify-end p-4 bg-gray-50/50 border-t md:border-t-0 md:border-l md:w-48 flex-shrink-0">
+                           <Link to={getValidationLink(item)} className="w-full md:w-auto">
+                              <Button variant="default" size="sm" className="w-full">
+                                Review Task <ArrowRight className="h-4 w-4 ml-1" />
+                              </Button>
+                            </Link>
                         </div>
-                      </div>
-                      <Link to="/validate">
-                        <Button variant="outline" size="sm">
-                          Review ASR
-                        </Button>
-                      </Link>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="tts" className="mt-4">
-              <div className="space-y-4">
-                {filteredTasks.filter(t => t.type === 'tts').map(task => (
-                  <div key={task.id} className="p-4 border rounded-md hover:border-afri-brown/50 transition-colors">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-start space-x-3">
-                        <div className="p-2 bg-gray-100 rounded-full">
-                          <Headphones className="h-5 w-5 text-afri-blue" />
-                        </div>
-                        <div>
-                          <h4 className="font-medium">{task.title}</h4>
-                          <p className="text-sm text-gray-500">{task.description}</p>
-                          <div className="flex items-center space-x-2 mt-2">
-                            <span className="text-xs font-medium bg-gray-100 px-2 py-0.5 rounded">
-                              {task.language}
-                            </span>
-                            <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">{task.count} items</span>
-                          </div>
-                        </div>
-                      </div>
-                      <Link to="/validate">
-                        <Button variant="outline" size="sm">
-                          Review TTS
-                        </Button>
-                      </Link>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="transcription" className="mt-4">
-              <div className="space-y-4">
-                {filteredTasks.filter(t => t.type === 'transcription').map(task => (
-                  <div key={task.id} className="p-4 border rounded-md hover:border-afri-brown/50 transition-colors">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-start space-x-3">
-                        <div className="p-2 bg-gray-100 rounded-full">
-                          <FileCheck className="h-5 w-5 text-afri-green" />
-                        </div>
-                        <div>
-                          <h4 className="font-medium">{task.title}</h4>
-                          <p className="text-sm text-gray-500">{task.description}</p>
-                          <div className="flex items-center space-x-2 mt-2">
-                            <span className="text-xs font-medium bg-gray-100 px-2 py-0.5 rounded">
-                              {task.language}
-                            </span>
-                            <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">{task.count} items</span>
-                          </div>
-                        </div>
-                      </div>
-                      <Link to="/validate">
-                        <Button variant="outline" size="sm">
-                          Review Transcriptions
-                        </Button>
-                      </Link>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="translation" className="mt-4">
-              <div className="space-y-4">
-                {filteredTasks.filter(t => t.type === 'translation').map(task => (
-                  <div key={task.id} className="p-4 border rounded-md hover:border-afri-brown/50 transition-colors">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-start space-x-3">
-                        <div className="p-2 bg-gray-100 rounded-full">
-                          <Languages className="h-5 w-5 text-afri-purple" />
-                        </div>
-                        <div>
-                          <h4 className="font-medium">{task.title}</h4>
-                          <p className="text-sm text-gray-500">{task.description}</p>
-                          <div className="flex items-center space-x-2 mt-2">
-                            <span className="text-xs font-medium bg-gray-100 px-2 py-0.5 rounded">
-                              {task.language}
-                            </span>
-                            <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">{task.count} items</span>
-                            {task.priority === "high" && (
-                              <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded">High Priority</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      <Link to="/validate">
-                        <Button variant="outline" size="sm">
-                          Review Translations
-                        </Button>
-                      </Link>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
-      
-      {/* Validation guidelines */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Validation Guidelines</CardTitle>
-          <CardDescription>Standards for quality assessment</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div>
-              <h4 className="font-medium mb-1">ASR Validation</h4>
-              <p className="text-sm text-gray-600">• Check that speech clearly describes the image content</p>
-              <p className="text-sm text-gray-600">• Verify pronunciation and speech clarity</p>
-              <p className="text-sm text-gray-600">• Ensure no background noise impacts quality</p>
             </div>
-            
-            <div>
-              <h4 className="font-medium mb-1">TTS Validation</h4>
-              <p className="text-sm text-gray-600">• Verify text is read accurately and completely</p>
-              <p className="text-sm text-gray-600">• Check for natural intonation and appropriate pacing</p>
-              <p className="text-sm text-gray-600">• Ensure consistent audio quality throughout the recording</p>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
-            
-            <div>
-              <h4 className="font-medium mb-1">Transcription Validation</h4>
-              <p className="text-sm text-gray-600">• Verify word-for-word accuracy with the original audio</p>
-              <p className="text-sm text-gray-600">• Check proper punctuation and formatting</p>
-              <p className="text-sm text-gray-600">• Ensure consistent style following project guidelines</p>
+          ) : (
+            <div className="text-center py-12 text-muted-foreground">
+              <ShieldCheck className="h-10 w-10 mx-auto mb-3 text-gray-400" />
+              No contributions are currently pending validation based on your filters.
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
     </div>

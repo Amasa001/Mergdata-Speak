@@ -7,26 +7,32 @@ import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from "react-
 
 // Import layouts & protected route component
 import { MainLayout } from "@/components/layout/MainLayout";
-import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
+import { AppLayout } from "@/components/layout/AppLayout"; // Keep for potential explicit use if needed
+import { ProtectedRoute } from "@/components/layout/ProtectedRoute"; // Import ProtectedRoute
 
 // Import pages
 import Index from "./pages/Index";
 import Register from "./pages/Register";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
-import Profile from "./pages/Profile";
-import HowItWorks from "./pages/HowItWorks";
-import FAQ from "./pages/FAQ";
-import Leaderboard from "./pages/Leaderboard";
-
-// Import task pages
 import ASRTask from "./pages/ASRTask";
 import TTSTask from "./pages/TTSTask";
 import TranscribeTask from "./pages/TranscribeTask";
 import TranslateTask from "./pages/TranslateTask";
 import ValidateTask from "./pages/ValidateTask";
+import AdminTaskCreator from "./pages/AdminTaskCreator";
+import Profile from "./pages/Profile";
+import HowItWorks from "./pages/HowItWorks";
+import FAQ from "./pages/FAQ";
+import Leaderboard from "./pages/Leaderboard";
+import AdminDashboard from "./pages/AdminDashboard";
+import TranscriptionTask from "./pages/TranscriptionTask";
+import TranscriptValidationTask from "./pages/TranscriptValidationTask";
 
-// Create a client for React Query
+// Import dashboard components
+import { TTSDashboard } from "@/components/dashboard/roles/TTSDashboard";
+
+// Initialize QueryClient for React Query
 const queryClient = new QueryClient();
 
 // TODO: Add authentication check to properly route users
@@ -45,31 +51,39 @@ const App = () => (
     <TooltipProvider>
       <Router>
         <Routes>
-          {/* Public routes with MainLayout */}
-          <Route element={<MainLayout><Outlet /></MainLayout>}>
+          {/* Public Pages */}
+          <Route path="/" element={<MainLayout><Outlet /></MainLayout>}>
             <Route index element={<Index />} />
-            <Route path="how-it-works" element={<HowItWorks />} />
-            <Route path="faq" element={<FAQ />} />
             <Route path="register" element={<Register />} />
             <Route path="login" element={<Login />} />
+            <Route path="how-it-works" element={<HowItWorks />} />
+            <Route path="faq" element={<FAQ />} />
           </Route>
 
-          {/* Protected routes - ProtectedRoute already applies AppLayout */}
+          {/* Protected Pages - wrapped with AppLayout */}
           <Route element={<ProtectedRoute />}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/profile" element={<Profile />} />
-            <Route path="/leaderboard" element={<Leaderboard />} />
-            
-            {/* Task routes */}
             <Route path="/asr" element={<ASRTask />} />
             <Route path="/tts" element={<TTSTask />} />
+            <Route path="/tts-dashboard" element={<TTSDashboard />} />
             <Route path="/transcribe" element={<TranscribeTask />} />
             <Route path="/translate" element={<TranslateTask />} />
             <Route path="/validate" element={<ValidateTask />} />
+            <Route path="/validate/:contributionId" element={<ValidateTask />} />
+            <Route path="/validate-asr/:contributionId" element={<ValidateTask />} />
+            <Route path="/validate-tts/:contributionId" element={<ValidateTask />} />
+            <Route path="/validate-translation/:contributionId" element={<ValidateTask />} />
+            <Route path="/transcription" element={<TranscriptionTask />} />
+            <Route path="/transcript-validation" element={<TranscriptValidationTask />} />
+            <Route path="/validate-transcript/:contributionId" element={<TranscriptValidationTask />} />
+            <Route path="/admin/create-task" element={<AdminTaskCreator />} />
+            <Route path="/leaderboard" element={<Leaderboard />} />
+            <Route path="/admin/dashboard" element={<AdminDashboard />} />
           </Route>
 
-          {/* Catch-all route - redirect to home */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          {/* Catch-all route */}
+          <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </Router>
 

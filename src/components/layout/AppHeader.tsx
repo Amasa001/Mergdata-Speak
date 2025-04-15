@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { LayoutDashboard, User, LogOut, Trophy } from 'lucide-react';
+import { LayoutDashboard, User, LogOut, Trophy, Settings } from 'lucide-react';
 
 /**
  * Header component for authenticated sections of the app.
@@ -11,6 +11,40 @@ import { LayoutDashboard, User, LogOut, Trophy } from 'lucide-react';
  */
 export const AppHeader: React.FC = () => {
   const navigate = useNavigate();
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
+
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      try {
+         const { data: { user } } = await supabase.auth.getUser();
+         if (user) {
+            const { data: profileData, error } = await supabase
+              .from('profiles')
+              .select('is_admin') // Select the is_admin field based on schema
+              .eq('id', user.id)
+              .single();
+            
+            if (error) {
+                console.error("Error fetching profile for admin check:", error);
+                setIsAdmin(false);
+            } else if (profileData) {
+                setIsAdmin(profileData.is_admin === true); // Check if is_admin is true
+            }
+         } else {
+             setIsAdmin(false);
+         }
+      } catch (error) {
+           console.error("Exception during admin check:", error);
+           setIsAdmin(false);
+      }
+    };
+    fetchUserRole();
+    
+    // Optional: Listen for auth changes to potentially update admin status if needed
+    // const { data: authListener } = supabase.auth.onAuthStateChange(...);
+    // return () => authListener?.subscription.unsubscribe();
+
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -49,6 +83,16 @@ export const AppHeader: React.FC = () => {
                 <User className="h-4 w-4 mr-1" /> Profile
               </Link>
             </Button>
+
+            {/* Conditional Admin Button based on is_admin field */}
+            {isAdmin && (
+               <Button variant="outline" size="sm" asChild>
+                  <Link to="/admin/create-task">
+                     <Settings className="h-4 w-4 mr-1" /> Admin Tasks
+                  </Link>
+               </Button>
+            )}
+
             <Button variant="ghost" size="sm" onClick={handleLogout}>
               <LogOut className="h-4 w-4 mr-1" /> Logout
             </Button>

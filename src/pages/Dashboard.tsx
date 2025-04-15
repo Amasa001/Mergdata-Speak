@@ -92,22 +92,17 @@ const Dashboard: React.FC = () => {
         );
       case 'tts_contributor':
         return (
-          <Link to="/tts">
-            <Button>Record Voice</Button>
-          </Link>
+          <div className="flex space-x-2">
+            <Link to="/tts">
+              <Button>Record Voice</Button>
+            </Link>
+            <Link to="/tts-dashboard">
+              <Button variant="outline">View TTS Tasks</Button>
+            </Link>
+          </div>
         );
       case 'transcriber':
-        return (
-          <Link to="/transcribe">
-            <Button>Transcribe</Button>
-          </Link>
-        );
-      case 'validator':
-        return (
-          <Link to="/validate">
-            <Button>Validate</Button>
-          </Link>
-        );
+        return null;
       case 'translator':
         return (
           <Link to="/translate">

@@ -77,11 +77,13 @@ const Register: React.FC = () => {
       if (authData.user) {
         const { error: profileError } = await supabase
           .from('profiles')
-          .update({ 
+          .insert({ 
+            id: authData.user.id,
+            full_name: formData.fullName,
             role: formData.role,
             languages: formData.languages,
-          })
-          .eq('id', authData.user.id);
+            is_admin: false
+          });
           
         if (profileError) throw profileError;
         
