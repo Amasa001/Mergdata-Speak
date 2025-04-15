@@ -131,6 +131,13 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "contributions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_contribution_stats"
+            referencedColumns: ["id"]
+          },
         ]
       }
       profiles: {
@@ -212,6 +219,13 @@ export type Database = {
             columns: ["assigned_to"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "user_contribution_stats"
             referencedColumns: ["id"]
           },
         ]
@@ -364,10 +378,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "translations_translator_id_fkey"
+            columns: ["translator_id"]
+            isOneToOne: false
+            referencedRelation: "user_contribution_stats"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "translations_validator_id_fkey"
             columns: ["validator_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "translations_validator_id_fkey"
+            columns: ["validator_id"]
+            isOneToOne: false
+            referencedRelation: "user_contribution_stats"
             referencedColumns: ["id"]
           },
         ]
@@ -532,6 +560,13 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "validations_validator_id_fkey"
+            columns: ["validator_id"]
+            isOneToOne: false
+            referencedRelation: "user_contribution_stats"
+            referencedColumns: ["id"]
+          },
         ]
       }
     }
@@ -544,6 +579,19 @@ export type Database = {
           pending_tasks: number | null
           target_language: string | null
           total_tasks: number | null
+        }
+        Relationships: []
+      }
+      user_contribution_stats: {
+        Row: {
+          asr_contributions: number | null
+          full_name: string | null
+          id: string | null
+          total_contributions: number | null
+          transcription_contributions: number | null
+          translation_contributions: number | null
+          tts_contributions: number | null
+          validated_contributions: number | null
         }
         Relationships: []
       }
