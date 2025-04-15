@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -91,8 +92,8 @@ export const ASRDashboard: React.FC = () => {
         
         if (data) {
           const recordingsCompleted = data.length;
-          // Fix: Properly access language property from tasks
-          const languages = new Set(data.map(c => c.tasks?.language).filter(Boolean));
+          // Fix: Correctly access language from each tasks object
+          const languages = new Set(data.map(c => c.tasks?.language || "Unknown"));
           const languagesCovered = languages.size;
           const pendingValidation = data.filter(c => 
             c.status === 'pending_validation' || c.status === 'pending_transcript_validation'
