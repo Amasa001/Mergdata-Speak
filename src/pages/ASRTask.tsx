@@ -7,8 +7,8 @@ import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { LanguageFilter } from '@/components/tasks/LanguageFilter';
 import { Progress } from "@/components/ui/progress";
-import { supabase } from '@/integrations/supabase/client'; // Import Supabase client
-import type { Database } from '@/integrations/supabase/types'; // Import generated types
+import { supabase } from '@/lib/supabase';
+import type { Database } from '@/integrations/supabase/types';
 import { Badge } from "@/components/ui/badge";
 
 // Define the expected structure of the content field for ASR tasks
@@ -24,7 +24,7 @@ type Task = Database['public']['Tables']['tasks']['Row'];
 
 // Define the structure the component uses internally (mapping DB task)
 interface MappedASRTask {
-  id: number; // Assuming task.id is number (int4)
+  id: number; 
   imageUrl?: string;
   description: string;
   title: string;
@@ -263,15 +263,24 @@ const ASRTask: React.FC = () => {
 
     const submissionPromises = Object.values(recordingsToSubmit).map(async ({ blob, taskId }) => {
         const timestamp = Date.now();
-        const filePath = `asr/${userId}/${taskId}-${timestamp}.webm`; // Unique path
+        const filePath = `asr-recordings/${userId}/${taskId}-${timestamp}.webm`; // Changed path structure
         console.log(`Processing upload for task ${taskId} to path: ${filePath}`);
 
         try {
-            // 1. Upload audio blob to Storage
+            // First ensure the user session is still valid
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
+                throw new Error("Your session has expired. Please log in again.");
+            }
+
+            // 1. Upload audio blob to Storage with explicit content type
             console.log(`Step 1: Uploading blob of type ${blob.type} and size ${blob.size} bytes`);
             const { data: uploadData, error: uploadError } = await supabase.storage
                 .from('asr-task-images') // Using the correct bucket name
-                .upload(filePath, blob, { contentType: blob.type });
+                .upload(filePath, blob, { 
+                    contentType: 'audio/webm',
+                    upsert: false
+                });
             
             if (uploadError) {
                 console.error(`Upload error for task ${taskId}:`, uploadError);
@@ -280,13 +289,17 @@ const ASRTask: React.FC = () => {
             
             console.log(`Step 1 complete: Upload successful, data:`, uploadData);
 
-            // 2. Get public URL (or signed URL if bucket is private)
+            // 2. Get public URL
             console.log(`Step 2: Getting public URL for ${filePath}`);
             const { data: urlData } = supabase.storage.from('asr-task-images').getPublicUrl(filePath);
             const storageUrl = urlData?.publicUrl;
             console.log(`Step 2 complete: URL obtained: ${storageUrl}`);
 
-            // 3. Insert contribution record into 'contributions' table
+            if (!storageUrl) {
+                throw new Error("Failed to get public URL for uploaded audio.");
+            }
+
+            // 3. Insert contribution record with more detailed metadata
             console.log(`Step 3: Creating contribution record for task ${taskId}`);
             const { error: insertError } = await supabase
               .from('contributions')
@@ -295,7 +308,9 @@ const ASRTask: React.FC = () => {
                   user_id: userId,
                   submitted_data: { 
                       timestamp: new Date().toISOString(),
-                      source: 'asr_web_interface' 
+                      source: 'asr_web_interface',
+                      content_type: blob.type,
+                      file_size: blob.size
                   },
                   storage_url: storageUrl,
                   status: 'pending_validation',
