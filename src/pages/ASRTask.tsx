@@ -1,20 +1,15 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardDescription, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { AudioRecorder } from '@/components/recording/AudioRecorder';
-import { ArrowLeft, SkipForward, Mic, Check, XCircle, Globe, Loader2, RotateCcw, Save, AlertCircle } from 'lucide-react';
+import { ArrowLeft, SkipForward, Mic, Check, XCircle, Globe, Loader2, RotateCcw, Save } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { LanguageFilter } from '@/components/tasks/LanguageFilter';
 import { Progress } from "@/components/ui/progress";
-import { supabase, ensureStorageBucket } from '@/lib/supabase';
-import type { Database } from '@/integrations/supabase/types';
+import { supabase } from '@/integrations/supabase/client'; // Import Supabase client
+import type { Database } from '@/integrations/supabase/types'; // Import generated types
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-
-// Define storage bucket name - consistent naming is important!
-const ASR_STORAGE_BUCKET = 'asr-recordings';
 
 // Define the expected structure of the content field for ASR tasks
 interface ASRTaskContent {
@@ -29,7 +24,7 @@ type Task = Database['public']['Tables']['tasks']['Row'];
 
 // Define the structure the component uses internally (mapping DB task)
 interface MappedASRTask {
-  id: number; 
+  id: number; // Assuming task.id is number (int4)
   imageUrl?: string;
   description: string;
   title: string;
@@ -52,19 +47,6 @@ const ASRTask: React.FC = () => {
   const [filteredTasks, setFilteredTasks] = useState<MappedASRTask[]>([]); // Store filtered tasks for display
   const [userId, setUserId] = useState<string | null>(null);
   const [wasTaskSkipped, setWasTaskSkipped] = useState(false); // Track if the current task was skipped
-  const [bucketError, setBucketError] = useState<string | null>(null);
-
-  // Check storage bucket exists - crucial for uploads
-  useEffect(() => {
-    const checkBucket = async () => {
-      const exists = await ensureStorageBucket(ASR_STORAGE_BUCKET);
-      if (!exists) {
-        setBucketError(`Unable to access the ${ASR_STORAGE_BUCKET} storage bucket. Please contact an administrator.`);
-      }
-    };
-    
-    checkBucket();
-  }, []);
 
   // Fetch User ID
   useEffect(() => {
@@ -268,22 +250,11 @@ const ASRTask: React.FC = () => {
     }
   };
   
-  // Modified to accept recordings data and handle bucket access more robustly
+  // Modified to accept recordings data
   const handleSubmitBatch = async (recordingsToSubmit: Record<number, { blob: Blob, taskId: number }>) => {
     if (Object.keys(recordingsToSubmit).length === 0 || !userId) {
        toast({ title: "No recordings", description: "Record at least one description to submit.", variant: "destructive"});
        return;
-    }
-
-    // Check if storage bucket exists before attempting upload
-    const bucketExists = await ensureStorageBucket(ASR_STORAGE_BUCKET);
-    if (!bucketExists) {
-      toast({ 
-        title: "Storage Error", 
-        description: "Cannot access the recordings storage. Please contact an administrator.", 
-        variant: "destructive"
-      });
-      return;
     }
 
     setIsSubmitting(true);
@@ -292,24 +263,15 @@ const ASRTask: React.FC = () => {
 
     const submissionPromises = Object.values(recordingsToSubmit).map(async ({ blob, taskId }) => {
         const timestamp = Date.now();
-        const filePath = `${userId}/${taskId}-${timestamp}.webm`; // Simplified path structure
+        const filePath = `asr/${userId}/${taskId}-${timestamp}.webm`; // Unique path
         console.log(`Processing upload for task ${taskId} to path: ${filePath}`);
 
         try {
-            // First ensure the user session is still valid
-            const { data: { session } } = await supabase.auth.getSession();
-            if (!session) {
-                throw new Error("Your session has expired. Please log in again.");
-            }
-
-            // 1. Upload audio blob to Storage with explicit content type
+            // 1. Upload audio blob to Storage
             console.log(`Step 1: Uploading blob of type ${blob.type} and size ${blob.size} bytes`);
             const { data: uploadData, error: uploadError } = await supabase.storage
-                .from(ASR_STORAGE_BUCKET) // Use consistent bucket name
-                .upload(filePath, blob, { 
-                    contentType: 'audio/webm',
-                    upsert: false
-                });
+                .from('asr-task-images') // Using the correct bucket name
+                .upload(filePath, blob, { contentType: blob.type });
             
             if (uploadError) {
                 console.error(`Upload error for task ${taskId}:`, uploadError);
@@ -318,17 +280,13 @@ const ASRTask: React.FC = () => {
             
             console.log(`Step 1 complete: Upload successful, data:`, uploadData);
 
-            // 2. Get public URL
+            // 2. Get public URL (or signed URL if bucket is private)
             console.log(`Step 2: Getting public URL for ${filePath}`);
-            const { data: urlData } = supabase.storage.from(ASR_STORAGE_BUCKET).getPublicUrl(filePath);
+            const { data: urlData } = supabase.storage.from('asr-task-images').getPublicUrl(filePath);
             const storageUrl = urlData?.publicUrl;
             console.log(`Step 2 complete: URL obtained: ${storageUrl}`);
 
-            if (!storageUrl) {
-                throw new Error("Failed to get public URL for uploaded audio.");
-            }
-
-            // 3. Insert contribution record with more detailed metadata
+            // 3. Insert contribution record into 'contributions' table
             console.log(`Step 3: Creating contribution record for task ${taskId}`);
             const { error: insertError } = await supabase
               .from('contributions')
@@ -337,9 +295,7 @@ const ASRTask: React.FC = () => {
                   user_id: userId,
                   submitted_data: { 
                       timestamp: new Date().toISOString(),
-                      source: 'asr_web_interface',
-                      content_type: blob.type,
-                      file_size: blob.size
+                      source: 'asr_web_interface' 
                   },
                   storage_url: storageUrl,
                   status: 'pending_validation',
@@ -419,13 +375,6 @@ const ASRTask: React.FC = () => {
             />
         </div>
       </div>
-
-      {bucketError && (
-        <Alert variant="destructive" className="mb-4">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{bucketError}</AlertDescription>
-        </Alert>
-      )}
 
       {isLoadingTasks ? (
          <div className="text-center py-10">

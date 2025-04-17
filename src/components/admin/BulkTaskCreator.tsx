@@ -6,30 +6,35 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Upload, Loader2, Download, Info, FileArchive } from 'lucide-react';
 import { toast } from 'sonner';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
 import Papa from 'papaparse';
-import * as XLSX from 'xlsx';
-import JSZip from 'jszip';
-import { Progress } from '@/components/ui/progress';
+import * as XLSX from 'xlsx'; // Import xlsx library
+import JSZip from 'jszip'; // Added JSZip import
+import { Progress } from '@/components/ui/progress'; // Added Progress import
 
 type TaskType = Database['public']['Tables']['tasks']['Row']['type'];
 type TaskPriority = Database['public']['Tables']['tasks']['Row']['priority'];
 
+// TODO: Define available languages more robustly if needed
 const availableLanguages = [
   "Akan", "Ewe", "Ga", "Dagbani", "Fante", "Dagaare", "Gonja", "Kasem", "Kusaal", "Nzema", "English" 
 ];
 
+// Expected CSV headers for different task types
 const expectedHeaders: { [key in TaskType]?: string[] } = {
-  translation: ['source_text'], 
-  tts: ['text_to_speak'], 
-  transcription: ['audio_url']
+  translation: ['source_text'], // Example: CSV must have at least a 'source_text' column
+  tts: ['text_to_speak'], // Example: CSV must have 'text_to_speak'
+  transcription: ['audio_url'] // Example: CSV must have 'audio_url' pointing to existing audio
+  // Add headers for other types if they support bulk upload via CSV/Excel
 };
 
+// Updated to include ASR
 const availableTaskTypes: TaskType[] = ['asr', 'tts', 'translation', 'transcription'];
 
+// Sample data for CSV templates
 const sampleTemplates = {
-  asr: [],
+  asr: [], // Indicates ASR supports bulk, but via ZIP, not CSV/Excel
   translation: [
     { source_text: "Hello, how are you?", task_title: "Greeting translation", task_description: "Translate this greeting to the target language", source_language: "English", domain: "general" },
     { source_text: "Welcome to our community.", task_title: "Welcome message", task_description: "Translate this welcome message accurately", source_language: "English", domain: "general" },
@@ -45,6 +50,7 @@ const sampleTemplates = {
   ]
 };
 
+// Added state for ASR bulk upload progress/status
 interface ASRUploadStatus {
     totalFiles: number;
     processedFiles: number;
@@ -63,8 +69,10 @@ export const BulkTaskCreator: React.FC = () => {
   const [userId, setUserId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // State for ASR bulk upload progress
   const [asrUploadStatus, setAsrUploadStatus] = useState<ASRUploadStatus | null>(null);
 
+  // Fetch current user ID when component mounts
   useEffect(() => {
     const fetchUserId = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -82,52 +90,61 @@ export const BulkTaskCreator: React.FC = () => {
     if (event.target.files && event.target.files[0]) {
       const selectedFile = event.target.files[0];
       
+      // Validate file type based on selected Task Type
       const isTextTask = taskType === 'translation' || taskType === 'tts' || taskType === 'transcription';
       const allowedTextTypes = ['text/csv', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
-      const allowedAsrMimeTypes = ['application/zip', 'application/x-zip-compressed'];
-
+      const allowedAsrMimeTypes = ['application/zip', 'application/x-zip-compressed']; // Accept common zip MIME types
+      
       if (isTextTask && !allowedTextTypes.includes(selectedFile.type)) {
          toast.error(`Invalid file type for ${taskType}. Please upload a CSV or Excel file.`);
          setFile(null);
-         if (fileInputRef.current) fileInputRef.current.value = '';
+         if (fileInputRef.current) fileInputRef.current.value = ''; // Reset file input
          return;
       } 
+      // For ASR, check MIME type OR file extension
       else if (taskType === 'asr' && 
                !allowedAsrMimeTypes.includes(selectedFile.type) && 
                !selectedFile.name.toLowerCase().endsWith('.zip')) 
       { 
+         // Log the detected type for debugging
          console.warn(`ASR Upload: Detected file type '${selectedFile.type}' for file '${selectedFile.name}'. Allowing based on extension check if applicable.`);
          
+         // Check extension again explicitly for the error message
          if (!selectedFile.name.toLowerCase().endsWith('.zip')) {
              toast.error('Invalid file type for ASR bulk upload. Please upload a ZIP file (.zip extension).');
              setFile(null);
              if (fileInputRef.current) fileInputRef.current.value = '';
              return;
          }
+         // If it has .zip extension but wrong MIME, we still allow it here
       } 
       
       setFile(selectedFile);
-      setAsrUploadStatus(null);
+      setAsrUploadStatus(null); // Reset status when new file is selected
     } else {
       setFile(null);
       setAsrUploadStatus(null);
     }
   };
 
+  // --- File Parsing Logic ---
   const parseFile = (fileToParse: File): Promise<any[]> => {
     return new Promise((resolve, reject) => {
       if (fileToParse.type === 'text/csv') {
+        // --- CSV Parsing using Papaparse ---
         Papa.parse(fileToParse, {
-          header: true,
+          header: true, // Expect headers
           skipEmptyLines: true,
-          delimiter: '',
-          delimitersToGuess: [',', '\t', ';', '|'],
+          delimiter: '', // Auto-detect delimiter (try various options)
+          delimitersToGuess: [',', '\t', ';', '|'], // Common delimiters to try
           transformHeader: (header) => {
+            // Remove BOM characters if present and trim whitespace
             return header.replace(/^\uFEFF/, '').trim();
           },
           complete: (results) => {
             if (results.errors.length > 0) {
                console.error("CSV Parsing errors:", results.errors);
+               // Only reject if errors are critical
                const criticalErrors = results.errors.filter(e => 
                  e.code !== "TooFewFields" && e.code !== "TooManyFields" && 
                  e.code !== "UndetectableDelimiter"
@@ -138,14 +155,17 @@ export const BulkTaskCreator: React.FC = () => {
                  return;
                }
                
+               // Continue with warnings for minor issues
                console.warn("Non-critical CSV parsing warnings detected. Continuing with available data.");
             }
             
+            // Validate headers for the selected task type
             if (taskType && expectedHeaders[taskType]) {
                 const requiredHeaders = expectedHeaders[taskType]!;
                 const actualHeaders = results.meta.fields || [];
                 const missingHeaders = requiredHeaders.filter(h => !actualHeaders.includes(h));
                 if (missingHeaders.length > 0) {
+                    // Show sample headers found to aid troubleshooting
                     console.error("Headers found:", actualHeaders);
                     console.error("Missing required headers:", missingHeaders);
                     reject(new Error(`CSV is missing required headers for ${taskType} task: ${missingHeaders.join(', ')}. Headers found: ${actualHeaders.join(', ')}`));
@@ -162,6 +182,7 @@ export const BulkTaskCreator: React.FC = () => {
           }
         });
       } 
+      // --- Excel Parsing using SheetJS (xlsx) --- 
       else if (['application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'].includes(fileToParse.type)) {
         const reader = new FileReader();
         reader.onload = (event) => {
@@ -170,30 +191,38 @@ export const BulkTaskCreator: React.FC = () => {
               throw new Error("Failed to read Excel file");
             }
             
+            // Parse the Excel file
             const data = event.target.result;
             const workbook = XLSX.read(data, { type: 'binary' });
             
+            // Get the first sheet
             const sheetName = workbook.SheetNames[0];
             const worksheet = workbook.Sheets[sheetName];
             
+            // Convert to JSON with headers
             const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: "A" });
             
+            // Extract headers (first row) and convert data to expected format
             if (jsonData.length === 0) {
               reject(new Error("Excel file is empty"));
               return;
             }
             
+            // Extract headers from the first row
             const headerRow = jsonData[0] as Record<string, string>;
             const headers: string[] = [];
             
+            // Convert Excel-style headers (A, B, C) to actual column names
             Object.keys(headerRow).forEach(key => {
               headers.push(headerRow[key].toString().trim());
             });
             
+            // Process the remaining rows using the extracted headers
             const processedData = jsonData.slice(1).map((row) => {
               const item: Record<string, any> = {};
               const rowData = row as Record<string, any>;
               
+              // Map each Excel column to the appropriate header
               Object.keys(rowData).forEach((excelCol, index) => {
                 if (index < headers.length) {
                   const header = headers[index];
@@ -204,6 +233,7 @@ export const BulkTaskCreator: React.FC = () => {
               return item;
             });
             
+            // Validate headers for the selected task type
             if (taskType && expectedHeaders[taskType]) {
               const requiredHeaders = expectedHeaders[taskType]!;
               const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
@@ -231,12 +261,20 @@ export const BulkTaskCreator: React.FC = () => {
         
         reader.readAsBinaryString(fileToParse);
       }
+      // --- TODO: Handle ASR file uploads (e.g., ZIP containing images) --- 
+      // else if (taskType === 'asr') {
+      //   // Handle image uploads (maybe from a zip file?)
+      //   // This would likely involve uploading the files to storage first 
+      //   // and then creating tasks referencing the URLs.
+      //   reject(new Error('ASR bulk upload via file is not yet implemented.'));
+      // }
       else {
         reject(new Error(`Unsupported file type for parsing: ${fileToParse.type}`));
       }
     });
   };
 
+  // --- Handle ASR Zip upload separately --- 
   const processAsrZip = async (zipFile: File) => {
      if (!userId) {
          toast.error("User ID not found. Cannot process upload.");
@@ -257,6 +295,7 @@ export const BulkTaskCreator: React.FC = () => {
      try {
          const content = await zip.loadAsync(zipFile);
          content.forEach((relativePath, zipEntry) => {
+             // Check if it's an image file and not in a subdirectory structure like __MACOSX
              if (!zipEntry.dir && /\.(jpg|jpeg|png|webp)$/i.test(zipEntry.name) && !relativePath.startsWith('__MACOSX/')) {
                  imageFiles.push({ name: zipEntry.name, entry: zipEntry });
              }
@@ -283,8 +322,9 @@ export const BulkTaskCreator: React.FC = () => {
                  const imageBlob = await entry.async('blob');
                  const uniqueFileName = `asr-task-images/${userId}/${Date.now()}-${name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
+                 // Upload to Supabase Storage (bucket 'asr-task-images')
                  const { error: uploadError } = await supabase.storage
-                     .from('asr-task-images')
+                     .from('asr-task-images') // *** IMPORTANT: Ensure this bucket exists! ***
                      .upload(uniqueFileName, imageBlob, {
                          cacheControl: '3600',
                          upsert: false
@@ -294,6 +334,7 @@ export const BulkTaskCreator: React.FC = () => {
                      throw new Error(`Storage upload failed: ${uploadError.message}`);
                  }
 
+                 // Get public URL
                  const { data: urlData } = supabase.storage.from('asr-task-images').getPublicUrl(uniqueFileName);
                  const publicUrl = urlData?.publicUrl;
 
@@ -301,11 +342,12 @@ export const BulkTaskCreator: React.FC = () => {
                      throw new Error("Could not get public URL for uploaded image.");
                  }
 
+                 // Construct task payload
                  const taskPayload = {
                      created_by: userId,
                      type: 'asr' as TaskType,
-                     language: language,
-                     priority: priority,
+                     language: language, // From batch settings
+                     priority: priority, // From batch settings
                      status: 'pending' as const,
                      content: {
                          task_title: `ASR Task: ${name}`,
@@ -314,6 +356,7 @@ export const BulkTaskCreator: React.FC = () => {
                      }
                  };
 
+                 // Insert task into database
                  const { error: insertError } = await supabase.from('tasks').insert(taskPayload);
 
                  if (insertError) {
@@ -328,14 +371,18 @@ export const BulkTaskCreator: React.FC = () => {
                  setAsrUploadStatus(prev => ({ ...prev!, errors: errorCount }));
                  console.error(`Error processing file ${name}:`, err);
                  toast.error(`Failed to process ${name}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+                 // Optionally: Try to clean up - e.g., delete uploaded storage file if DB insert failed?
              }
          }
 
          setAsrUploadStatus(prev => ({ ...prev!, statusMessage: `Processing complete. ${successCount} tasks created, ${errorCount} errors.` }));
          toast.success(`Bulk ASR upload finished: ${successCount} tasks created.`);
+         // Reset form after successful completion
          setFile(null);
          setBatchName('');
+         // setLanguage(''); // Keep language/priority maybe?
          if (fileInputRef.current) fileInputRef.current.value = '';
+
      } catch (err) {
          console.error("Error processing zip file:", err);
          toast.error(`Failed to process zip file: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -353,27 +400,33 @@ export const BulkTaskCreator: React.FC = () => {
       return;
     }
     
+    // Consolidated validation checks
     if (!batchName || !taskType || !language || !file) {
       toast.error('Please fill in Batch Name, Task Type, Language, and select a file.');
       return;
     }
 
+    // --- Handle ASR Zip upload separately --- 
     if (taskType === 'asr') {
+      // Check if file has .zip extension
       if (file.name.toLowerCase().endsWith('.zip')) {
           await processAsrZip(file);
       } else {
           toast.error("Incorrect file type for ASR bulk upload. Please upload a ZIP.");
       }
-      return;
+      return; // Stop execution here for ASR tasks
     }
     
+    // --- Existing logic for CSV/Excel uploads for other task types ---
     setIsLoading(true);
-    setAsrUploadStatus(null);
+    setAsrUploadStatus(null); // Clear ASR status if switching to other types
     toast.info(`Starting bulk task creation for ${taskType.toUpperCase()}...`);
 
     try {
+      // Add more informative logging
       console.log(`Parsing file: ${file.name} (${file.type}) for task type: ${taskType}`);
       
+      // 1. Parse File Content (Only for non-ASR types now)
       const parsedData = await parseFile(file);
       
       if (!parsedData || parsedData.length === 0) {
@@ -381,17 +434,21 @@ export const BulkTaskCreator: React.FC = () => {
       }
       console.log(`Successfully parsed ${parsedData.length} rows.`);
 
+      // 2. Map Parsed Data to Task Objects (remains the same)
       const tasksToInsert = parsedData.map((item, index) => {
+         // Ensure item is an object
          if (typeof item !== 'object' || item === null) {
              console.warn(`Skipping invalid row ${index + 1}: Not an object`, item);
-             return null;
+             return null; // Skip this row
          }
          
+         // Construct the 'content' JSON based on taskType
          let taskContent: any = {
              task_title: item.task_title || `${batchName} - Item ${index + 1}`,
              task_description: item.task_description || `Task ${index + 1} from batch '${batchName}'.`,
          };
          
+         // Populate content based on task type and EXPECTED headers
          if (taskType === 'translation') {
              if (!item.source_text) {
                  console.warn(`Skipping row ${index + 1} (Translation): Missing required 'source_text' column.`);
@@ -414,8 +471,10 @@ export const BulkTaskCreator: React.FC = () => {
              taskContent.audio_url = item.audio_url;
          }
 
+         // Add batch name to content JSON
          taskContent.batch_name = batchName;
          
+         // For translation tasks, include language info in the content
          if (taskType === 'translation') {
              taskContent.source_language = item.source_language || 'English';
              taskContent.target_language = language;
@@ -437,6 +496,7 @@ export const BulkTaskCreator: React.FC = () => {
       
       console.log(`Prepared ${tasksToInsert.length} valid tasks for insertion.`);
 
+      // 3. Bulk Insert Tasks (remains the same)
       const BATCH_SIZE = 50;
       let totalInserted = 0;
       for (let i = 0; i < tasksToInsert.length; i += BATCH_SIZE) {
@@ -451,6 +511,7 @@ export const BulkTaskCreator: React.FC = () => {
       }
 
       toast.success(`Successfully created ${totalInserted} tasks in batch '${batchName}'.`);
+      // Reset form (remains the same)
       setBatchName('');
       setTaskType('');
       setLanguage('');
@@ -468,6 +529,7 @@ export const BulkTaskCreator: React.FC = () => {
     }
   };
 
+  // Function to generate and download a sample CSV template
   const downloadSampleTemplate = () => {
     if (!taskType) {
       toast.error("Please select a task type first");
@@ -480,19 +542,24 @@ export const BulkTaskCreator: React.FC = () => {
       return;
     }
 
+    // Convert sample data to CSV
     let csv = '';
     
+    // Get all unique headers
     const headers = Object.keys(samples[0]);
     csv += headers.join(',') + '\n';
     
+    // Add data rows
     samples.forEach(row => {
       const rowData = headers.map(header => {
         const value = row[header as keyof typeof row] || '';
+        // Escape quotes and wrap in quotes if contains comma
         return `"${String(value).replace(/"/g, '""')}"`;
       });
       csv += rowData.join(',') + '\n';
     });
     
+    // Create blob and download
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -520,6 +587,7 @@ export const BulkTaskCreator: React.FC = () => {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Add a helper information section */}
           {taskType && (
             <div className="bg-muted/50 p-3 rounded-md mb-4">
               <h4 className="text-sm font-medium mb-2">Format Requirements for {taskType.toUpperCase()} Tasks</h4>
@@ -550,6 +618,7 @@ export const BulkTaskCreator: React.FC = () => {
             </div>
           )}
           
+          {/* Batch Name */}
           <div>
             <Label htmlFor="batchName">Batch Name</Label>
             <Input 
@@ -562,6 +631,7 @@ export const BulkTaskCreator: React.FC = () => {
             />
           </div>
 
+          {/* Task Type, Language, Priority */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
                 <Label htmlFor="bulk-taskType">Task Type</Label>
@@ -570,12 +640,13 @@ export const BulkTaskCreator: React.FC = () => {
                       <SelectValue placeholder="Select task type" />
                     </SelectTrigger>
                     <SelectContent>
+                      {/* Map over availableTaskTypes to generate items dynamically */}
                       {availableTaskTypes.map(type => (
                         <SelectItem key={type} value={type}>{type.toUpperCase()}</SelectItem>
                       ))}
                     </SelectContent>
                 </Select>
-                {taskType && taskType !== 'asr' && (
+                {taskType && taskType !== 'asr' && ( // Hide template download for ASR
                   <Button
                     type="button"
                     variant="outline"
@@ -613,6 +684,7 @@ export const BulkTaskCreator: React.FC = () => {
              </div>
           </div>
 
+          {/* File Upload */}
           <div>
              <Label htmlFor="taskFile">Upload File</Label>
              <div className="flex items-center space-x-2">
@@ -626,6 +698,7 @@ export const BulkTaskCreator: React.FC = () => {
                  disabled={isLoading || !taskType}
                  className="flex-grow"
                />
+                {/* Optionally show file name */}
                {file && <span className="text-sm text-muted-foreground truncate max-w-xs">{file.name}</span>}
              </div>
              <p className="text-xs text-muted-foreground mt-1">
@@ -637,6 +710,7 @@ export const BulkTaskCreator: React.FC = () => {
              </p>
           </div>
 
+          {/* ASR Upload Progress */}
           {isLoading && taskType === 'asr' && asrUploadStatus && (
             <div className="space-y-2 pt-4">
                  <Label>Upload Progress</Label>
@@ -648,6 +722,7 @@ export const BulkTaskCreator: React.FC = () => {
             </div>
           )}
 
+          {/* Submit Button */}
           <Button type="submit" disabled={isLoading || !file}>
             {isLoading ? (
                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creating Tasks...</>
@@ -661,4 +736,4 @@ export const BulkTaskCreator: React.FC = () => {
       </CardContent>
     </Card>
   );
-};
+}; 

@@ -3,9 +3,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Trophy, Award, User, ChevronUp, ChevronDown } from 'lucide-react';
+import { 
+  Trophy, Award, User, ChevronUp, ChevronDown
+} from 'lucide-react';
 import { ProfileBadge } from '@/components/profile/ProfileBadge';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/integrations/supabase/client';
 import {
   Table,
   TableBody,
@@ -16,17 +18,27 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from '@/components/ui/skeleton';
 
+// Define contributor interface for the leaderboard
 interface Contributor {
   id: string;
   name: string;
-  asr_contributions: number;
-  tts_contributions: number;
-  translation_contributions: number;
-  transcription_contributions: number;
-  validated_contributions: number;
-  total_contributions: number;
+  asr: number;
+  tts: number;
+  translation: number;
+  transcription: number;
+  validate: number;
+  totalScore: number;
   rank?: number;
 }
+
+// Map task types to badge types
+const taskTypeToBadgeType: Record<string, string> = {
+  'asr': 'asr',
+  'tts': 'tts',
+  'translation': 'translate',
+  'transcription': 'transcribe',
+  'validate': 'validate'
+};
 
 const Leaderboard: React.FC = () => {
   const [contributors, setContributors] = useState<Contributor[]>([]);
@@ -37,26 +49,74 @@ const Leaderboard: React.FC = () => {
     const fetchContributors = async () => {
       setLoading(true);
       try {
-        const { data: stats, error } = await supabase
-          .from('user_contribution_stats')
-          .select('*')
-          .order('total_contributions', { ascending: false });
-
-        if (error) throw error;
-
-        const contributorsData = stats?.map((stat, index) => ({
-          id: stat.id,
-          name: stat.full_name || 'Anonymous User',
-          asr_contributions: stat.asr_contributions,
-          tts_contributions: stat.tts_contributions,
-          translation_contributions: stat.translation_contributions,
-          transcription_contributions: stat.transcription_contributions,
-          validated_contributions: stat.validated_contributions,
-          total_contributions: stat.total_contributions,
-          rank: index + 1
-        })) || [];
-
-        setContributors(contributorsData);
+        // Fetch all profiles
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, full_name');
+        
+        if (!profiles) {
+          console.error('No profiles found');
+          setLoading(false);
+          return;
+        }
+        
+        // Fetch all contributions with task types
+        const { data: contribData } = await supabase
+          .from('contributions')
+          .select('user_id, task_id, tasks(type)');
+          
+        const contributorMap = new Map<string, Contributor>();
+        
+        // Initialize contributors from profiles
+        profiles.forEach(profile => {
+          const name = profile.full_name || 'Anonymous User';
+          
+          contributorMap.set(profile.id, {
+            id: profile.id,
+            name: name,
+            asr: 0,
+            tts: 0,
+            translation: 0, 
+            transcription: 0,
+            validate: 0,
+            totalScore: 0
+          });
+        });
+        
+        // Add contributions to the appropriate users
+        if (contribData) {
+          contribData.forEach(contrib => {
+            if (!contrib.user_id || !contrib.tasks) return;
+            
+            const taskType = typeof contrib.tasks === 'object' ? contrib.tasks.type : null;
+            if (!taskType) return;
+            
+            const contributor = contributorMap.get(contrib.user_id);
+            if (contributor) {
+              // Increment the appropriate task type count
+              if (taskType === 'asr') contributor.asr++;
+              else if (taskType === 'tts') contributor.tts++;
+              else if (taskType === 'translation') contributor.translation++;
+              else if (taskType === 'transcription') contributor.transcription++;
+              else if (taskType === 'validate') contributor.validate++;
+              
+              // Increase total score
+              contributor.totalScore++;
+            }
+          });
+        }
+        
+        // Convert map to array, filter out zero contributions, and sort by score
+        let contributorsArray = Array.from(contributorMap.values())
+          .filter(c => c.totalScore > 0)
+          .sort((a, b) => b.totalScore - a.totalScore);
+          
+        // Assign ranks
+        contributorsArray.forEach((contributor, idx) => {
+          contributor.rank = idx + 1;
+        });
+        
+        setContributors(contributorsArray);
       } catch (error) {
         console.error('Error fetching leaderboard data:', error);
       } finally {
@@ -77,52 +137,44 @@ const Leaderboard: React.FC = () => {
       .substring(0, 2);
   };
 
-  // Map task types to badge types
-  const taskTypeToBadgeType: Record<string, string> = {
-    'asr': 'asr',
-    'tts': 'tts',
-    'translation': 'translate',
-    'transcription': 'transcribe',
-    'validate': 'validate'
-  };
-
   // Filter and sort contributors based on active tab
   const getFilteredContributors = () => {
     if (activeTab === 'all') {
-      return [...contributors].sort((a, b) => b.total_contributions - a.total_contributions);
+      return [...contributors].sort((a, b) => b.totalScore - a.totalScore);
     }
+    
     if (activeTab === 'asr') {
-      return [...contributors].filter(c => c.asr_contributions > 0)
-        .sort((a, b) => b.asr_contributions - a.asr_contributions);
+      return [...contributors].filter(c => c.asr > 0).sort((a, b) => b.asr - a.asr);
     }
+    
     if (activeTab === 'tts') {
-      return [...contributors].filter(c => c.tts_contributions > 0)
-        .sort((a, b) => b.tts_contributions - a.tts_contributions);
+      return [...contributors].filter(c => c.tts > 0).sort((a, b) => b.tts - a.tts);
     }
+    
     if (activeTab === 'translate') {
-      return [...contributors].filter(c => c.translation_contributions > 0)
-        .sort((a, b) => b.translation_contributions - a.translation_contributions);
+      return [...contributors].filter(c => c.translation > 0).sort((a, b) => b.translation - a.translation);
     }
+    
     if (activeTab === 'transcribe') {
-      return [...contributors].filter(c => c.transcription_contributions > 0)
-        .sort((a, b) => b.transcription_contributions - a.transcription_contributions);
+      return [...contributors].filter(c => c.transcription > 0).sort((a, b) => b.transcription - a.transcription);
     }
+    
     if (activeTab === 'validate') {
-      return [...contributors].filter(c => c.validated_contributions > 0)
-        .sort((a, b) => b.validated_contributions - a.validated_contributions);
+      return [...contributors].filter(c => c.validate > 0).sort((a, b) => b.validate - a.validate);
     }
+    
     return contributors;
   };
 
   // Get the score for the current tab
   const getScoreForTab = (contributor: Contributor) => {
-    if (activeTab === 'all') return contributor.total_contributions;
-    if (activeTab === 'asr') return contributor.asr_contributions;
-    if (activeTab === 'tts') return contributor.tts_contributions;
-    if (activeTab === 'translate') return contributor.translation_contributions;
-    if (activeTab === 'transcribe') return contributor.transcription_contributions;
-    if (activeTab === 'validate') return contributor.validated_contributions;
-    return contributor.total_contributions;
+    if (activeTab === 'all') return contributor.totalScore;
+    if (activeTab === 'asr') return contributor.asr;
+    if (activeTab === 'tts') return contributor.tts;
+    if (activeTab === 'translate') return contributor.translation;
+    if (activeTab === 'transcribe') return contributor.transcription;
+    if (activeTab === 'validate') return contributor.validate;
+    return contributor.totalScore;
   };
 
   // Get the appropriate badge type based on active tab
@@ -174,8 +226,8 @@ const Leaderboard: React.FC = () => {
               {activeTab === 'all' ? 'Top Contributors' : `${activeTab.toUpperCase()} Leaders`}
             </CardTitle>
             <CardDescription>
-              {activeTab === 'all'
-                ? 'Contributors ranked by total score across all tasks'
+              {activeTab === 'all' 
+                ? 'Contributors ranked by total score across all tasks' 
                 : `Top contributors for ${activeTab} tasks`}
             </CardDescription>
           </CardHeader>
@@ -219,9 +271,9 @@ const Leaderboard: React.FC = () => {
                         {/* Medal for top 3 */}
                         {index < 3 ? (
                           <div className={`flex h-8 w-8 items-center justify-center rounded-full 
-                            ${index === 0 ? 'bg-yellow-100 text-yellow-500' :
-                              index === 1 ? 'bg-gray-100 text-gray-500' :
-                                'bg-amber-100 text-amber-700'}`}>
+                            ${index === 0 ? 'bg-yellow-100 text-yellow-500' : 
+                            index === 1 ? 'bg-gray-100 text-gray-500' : 
+                            'bg-amber-100 text-amber-700'}`}>
                             {index + 1}
                           </div>
                         ) : (
@@ -242,20 +294,20 @@ const Leaderboard: React.FC = () => {
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1 flex-wrap">
-                          {contributor.asr_contributions > 0 && (
-                            <ProfileBadge type="asr" count={contributor.asr_contributions} size="sm" />
+                          {contributor.asr > 0 && (
+                            <ProfileBadge type="asr" count={contributor.asr} size="sm" />
                           )}
-                          {contributor.tts_contributions > 0 && (
-                            <ProfileBadge type="tts" count={contributor.tts_contributions} size="sm" />
+                          {contributor.tts > 0 && (
+                            <ProfileBadge type="tts" count={contributor.tts} size="sm" />
                           )}
-                          {contributor.translation_contributions > 0 && (
-                            <ProfileBadge type="translate" count={contributor.translation_contributions} size="sm" />
+                          {contributor.translation > 0 && (
+                            <ProfileBadge type="translate" count={contributor.translation} size="sm" />
                           )}
-                          {contributor.transcription_contributions > 0 && (
-                            <ProfileBadge type="transcribe" count={contributor.transcription_contributions} size="sm" />
+                          {contributor.transcription > 0 && (
+                            <ProfileBadge type="transcribe" count={contributor.transcription} size="sm" />
                           )}
-                          {contributor.validated_contributions > 0 && (
-                            <ProfileBadge type="validate" count={contributor.validated_contributions} size="sm" />
+                          {contributor.validate > 0 && (
+                            <ProfileBadge type="validate" count={contributor.validate} size="sm" />
                           )}
                         </div>
                       </TableCell>
@@ -274,4 +326,4 @@ const Leaderboard: React.FC = () => {
   );
 };
 
-export default Leaderboard;
+export default Leaderboard; 

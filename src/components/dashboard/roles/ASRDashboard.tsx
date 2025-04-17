@@ -3,28 +3,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Mic, Languages, Clock, AlertCircle, Loader2, FileCheck, ListChecks } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 
-// Define interfaces for the data structure
-interface Task {
-  type: string;
-  language: string;
-}
-
-interface Contribution {
-  id: number;
-  status: string;
-  tasks: Task;
-}
-
+// Interface for fetched stats
 interface ASRStats {
   recordingsCompleted: number;
   languagesCovered: number;
   pendingValidation: number;
+  // minutesRecorded: number; // Omitted for now
 }
 
+// Interface for available tasks
 interface AvailableTask {
   id: number;
   title: string;
@@ -37,6 +28,8 @@ export const ASRDashboard: React.FC = () => {
   const [userId, setUserId] = useState<string | null>(null);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
   const [statsError, setStatsError] = useState<string | null>(null);
+
+  // State for available tasks
   const [availableTasks, setAvailableTasks] = useState<AvailableTask[]>([]);
   const [isLoadingTasks, setIsLoadingTasks] = useState(true);
   const [tasksError, setTasksError] = useState<string | null>(null);
@@ -89,7 +82,7 @@ export const ASRDashboard: React.FC = () => {
             tasks!inner (type, language)
           `)
           .eq('user_id', userId)
-          .eq('tasks.type', 'asr') as { data: Contribution[] | null, error: Error | null };
+          .eq('tasks.type', 'asr');
 
         if (fetchError) {
           console.error("Error fetching ASR contributions:", fetchError);
@@ -98,7 +91,7 @@ export const ASRDashboard: React.FC = () => {
         
         if (data) {
           const recordingsCompleted = data.length;
-          const languages = new Set(data.map(c => c.tasks.language || "Unknown"));
+          const languages = new Set(data.map(c => c.tasks?.language).filter(Boolean));
           const languagesCovered = languages.size;
           const pendingValidation = data.filter(c => 
             c.status === 'pending_validation' || c.status === 'pending_transcript_validation'
@@ -110,7 +103,7 @@ export const ASRDashboard: React.FC = () => {
             pendingValidation
           });
         } else {
-          setStats({
+           setStats({
             recordingsCompleted: 0,
             languagesCovered: 0,
             pendingValidation: 0
@@ -121,7 +114,7 @@ export const ASRDashboard: React.FC = () => {
         const errorMsg = err instanceof Error ? err.message : "An unexpected error occurred fetching stats.";
         setStatsError(errorMsg);
         toast.error("Error loading your ASR statistics.");
-        setStats(null);
+        setStats(null); // Reset stats on error
       } finally {
         setIsLoadingStats(false);
       }
@@ -140,11 +133,12 @@ export const ASRDashboard: React.FC = () => {
       setIsLoadingTasks(true);
       setTasksError(null);
       try {
+        // Fetch IDs of tasks the user has already contributed to (ASR only)
         const { data: contributionData, error: contributionError } = await supabase
           .from('contributions')
           .select('task_id')
           .eq('user_id', userId)
-          .not('task_id', 'is', null);
+          .not('task_id', 'is', null); // Ensure task_id is not null
 
         if (contributionError) {
             console.error("Error fetching user contributions:", contributionError);
@@ -153,12 +147,14 @@ export const ASRDashboard: React.FC = () => {
 
         const contributedTaskIds = contributionData?.map(c => c.task_id) || [];
         
+        // Fetch active ASR tasks, excluding those already contributed to
         let query = supabase
           .from('tasks')
-          .select('id, content, language')
+          .select('id, content, language') // Select necessary fields
           .eq('type', 'asr')
-          .eq('status', 'pending');
+          .eq('status', 'pending'); // Corrected status to 'pending'
 
+        // Only add the 'not in' filter if there are contributed tasks
         if (contributedTaskIds.length > 0) {
           query = query.not('id', 'in', `(${contributedTaskIds.join(',')})`);
         }
@@ -170,8 +166,10 @@ export const ASRDashboard: React.FC = () => {
             throw new Error("Could not fetch available ASR tasks.");
         }
 
+        // Map data for display
         const mappedTasks = taskData?.map(task => ({
           id: task.id,
+          // Safely access content properties
           title: (task.content as any)?.task_title || `ASR Task ${task.id}`,
           description: (task.content as any)?.task_description || 'Describe the associated image.',
           language: task.language || 'Unknown',
@@ -184,7 +182,7 @@ export const ASRDashboard: React.FC = () => {
         const errorMsg = err instanceof Error ? err.message : "An unexpected error occurred fetching tasks.";
         setTasksError(errorMsg);
         toast.error("Error loading available ASR tasks.");
-        setAvailableTasks([]);
+        setAvailableTasks([]); // Reset tasks on error
       } finally {
         setIsLoadingTasks(false);
       }
@@ -195,6 +193,7 @@ export const ASRDashboard: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* ASR-specific stats */}
       <Card>
           <CardHeader>
               <CardTitle>Your ASR Contribution Stats</CardTitle>
@@ -211,6 +210,7 @@ export const ASRDashboard: React.FC = () => {
                   </div>
               ) : stats ? (
                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Recordings Card */}
                     <Card className="border-none shadow-sm bg-blue-50">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
@@ -224,6 +224,7 @@ export const ASRDashboard: React.FC = () => {
           </CardContent>
         </Card>
         
+                    {/* Languages Card */}
                     <Card className="border-none shadow-sm bg-green-50">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
@@ -237,6 +238,7 @@ export const ASRDashboard: React.FC = () => {
           </CardContent>
         </Card>
         
+                    {/* Pending Validation Card */}
                     <Card className="border-none shadow-sm bg-yellow-50">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
@@ -256,6 +258,7 @@ export const ASRDashboard: React.FC = () => {
           </CardContent>
         </Card>
       
+      {/* Available ASR Tasks */}
       <Card>
         <CardHeader>
           <CardTitle>Available ASR Tasks</CardTitle>
@@ -284,6 +287,7 @@ export const ASRDashboard: React.FC = () => {
                         <Badge variant="outline">{task.language}</Badge>
                       </div>
                     </div>
+                    {/* Link to the main ASR page - assumes it handles task selection */}
                     <Link to={`/asr`}> 
                     <Button variant="outline" size="sm">
                       Start Recording
@@ -302,6 +306,7 @@ export const ASRDashboard: React.FC = () => {
         </CardContent>
       </Card>
       
+      {/* ASR Guide */}
       <Card>
         <CardHeader>
           <CardTitle>ASR Recording Guide</CardTitle>

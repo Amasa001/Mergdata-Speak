@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/integrations/supabase/client';
 import { Link, Navigate } from 'react-router-dom';
 import { Edit, Trash2, Plus, Filter, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -20,19 +20,15 @@ import { Input } from '@/components/ui/input';
 interface Task {
   id: string;
   created_at: string;
-  type: 'asr' | 'tts' | 'translation';
-  source_language?: string;
-  target_language?: string | null;
+  task_type: string;
+  source_language: string;
+  target_language: string | null;
   content: Record<string, any>;
-  status: 'pending' | 'active' | 'completed' | 'assigned' | 'archived';
-  priority: 'low' | 'medium' | 'high';
-  language: string;
-  batch_id?: string;
-  created_by: string;
-  assigned_to?: string;
-  metadata?: Record<string, any>;
+  status: string;
+  priority: string;
 }
 
+// Add interface for translation stats
 interface TranslationStats {
   totalTasks: number;
   pendingTasks: number;
@@ -65,6 +61,7 @@ const AdminDashboard: React.FC = () => {
   useEffect(() => {
     async function checkAdminAndFetchTasks() {
       try {
+        // Check if the user is an admin
         const { data: { user } } = await supabase.auth.getUser();
         
         if (!user) {
@@ -73,6 +70,7 @@ const AdminDashboard: React.FC = () => {
           return;
         }
         
+        // Check if user is an admin
         const { data: profileData, error } = await supabase
           .from('profiles')
           .select('is_admin')
@@ -87,6 +85,7 @@ const AdminDashboard: React.FC = () => {
           setIsAdmin(profileData?.is_admin || false);
           
           if (profileData?.is_admin) {
+            // Fetch tasks if user is admin
             fetchTasks();
           }
         }
@@ -106,51 +105,45 @@ const AdminDashboard: React.FC = () => {
     try {
       setLoading(true);
       
+      // Build query based on filters
       let query = supabase.from('tasks').select('*');
       
       if (filterType !== 'all') {
-        query = query.eq('type', filterType);
+        query = query.eq('task_type', filterType);
       }
       
       if (filterLanguage !== 'all') {
-        query = query.eq('language', filterLanguage);
+        // This handles source language filtering
+        query = query.eq('source_language', filterLanguage);
       }
       
       if (filterStatus !== 'all') {
-        if (['pending', 'active', 'completed', 'assigned', 'archived'].includes(filterStatus)) {
-          query = query.eq('status', filterStatus as Task['status']);
-        }
+        query = query.eq('status', filterStatus);
       }
       
+      // Execute the query
       const { data, error } = await query;
       
       if (error) {
         throw error;
       }
       
+      // Filter by search query if present (client-side)
       let filteredData = data;
       if (searchQuery) {
         const lowerQuery = searchQuery.toLowerCase();
-        filteredData = data.filter((taskItem: any) => 
-          (taskItem.content?.task_title?.toLowerCase().includes(lowerQuery) ||
-           taskItem.content?.task_description?.toLowerCase().includes(lowerQuery) ||
-           taskItem.id.toString().toLowerCase().includes(lowerQuery))
+        filteredData = data.filter((task: Task) => 
+          (task.content?.task_title?.toLowerCase().includes(lowerQuery) ||
+           task.content?.task_description?.toLowerCase().includes(lowerQuery) ||
+           task.id.toLowerCase().includes(lowerQuery))
         );
       }
       
-      const typedTasks = filteredData?.map((task: any) => ({
-        ...task,
-        id: task.id.toString(),
-        type: task.type,
-        task_type: task.type,
-        source_language: task.language,
-        target_language: task.content?.target_language || null,
-      })) as Task[];
+      setTasks(filteredData || []);
       
-      setTasks(typedTasks || []);
-      
+      // Extract unique languages for the filter
       const uniqueLanguages = Array.from(new Set(
-        data?.map((task: any) => task.language)
+        data?.map((task: Task) => task.source_language)
           .filter(Boolean) || []
       ));
       setLanguages(uniqueLanguages as string[]);
@@ -165,6 +158,7 @@ const AdminDashboard: React.FC = () => {
 
   const fetchTranslationStats = async () => {
     try {
+      // Fetch all translation tasks
       const { data: translationTasks, error } = await supabase
         .from('tasks')
         .select('*, contributions(*)')
@@ -183,7 +177,9 @@ const AdminDashboard: React.FC = () => {
           byStatus: {},
         };
         
+        // Process each task
         translationTasks.forEach((task: any) => {
+          // Count by status
           const status = task.status as string;
           stats.byStatus[status] = (stats.byStatus[status] || 0) + 1;
           
@@ -195,11 +191,13 @@ const AdminDashboard: React.FC = () => {
             stats.inProgressTasks++;
           }
           
+          // Count by language
           const lang = task.language;
           if (lang) {
             stats.byLanguage[lang] = (stats.byLanguage[lang] || 0) + 1;
           }
           
+          // Count by domain - safely access content as object
           let domain = 'general';
           if (task.content && typeof task.content === 'object') {
             domain = (task.content as any).domain || 'general';
@@ -215,6 +213,7 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  // Update useEffect to fetch translation stats
   useEffect(() => {
     fetchTasks();
     fetchTranslationStats();
@@ -236,6 +235,7 @@ const AdminDashboard: React.FC = () => {
       }
       
       toast.success('Task deleted successfully');
+      // Refresh the task list
       fetchTasks();
       
     } catch (error) {
@@ -253,7 +253,6 @@ const AdminDashboard: React.FC = () => {
       case 'transcribe':
         return <Badge variant="outline" className="bg-purple-100 text-purple-800">Transcribe</Badge>;
       case 'translate':
-      case 'translation':
         return <Badge variant="outline" className="bg-orange-100 text-orange-800">Translate</Badge>;
       case 'validate':
         return <Badge variant="outline" className="bg-yellow-100 text-yellow-800">Validate</Badge>;
@@ -284,9 +283,11 @@ const AdminDashboard: React.FC = () => {
     setSearchQuery('');
     setFilterLanguage('all');
     setFilterStatus('all');
+    // Trigger refetch with reset filters
     setTimeout(fetchTasks, 0);
   };
 
+  // If not admin, redirect to dashboard
   if (isAdmin === false) {
     return <Navigate to="/dashboard" />;
   }
@@ -300,6 +301,7 @@ const AdminDashboard: React.FC = () => {
     );
   }
 
+  // Add this section to render translation stats
   const renderTranslationStats = () => {
     return (
       <Card className="col-span-2">
@@ -360,6 +362,7 @@ const AdminDashboard: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         {renderTranslationStats()}
         
+        {/* Other dashboard cards */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Total Tasks</CardTitle>
@@ -388,6 +391,7 @@ const AdminDashboard: React.FC = () => {
         </Card>
       </div>
       
+      {/* Filters Section */}
       <Card className="mb-8">
         <CardHeader className="pb-2">
           <CardTitle className="text-lg flex items-center">
@@ -407,7 +411,7 @@ const AdminDashboard: React.FC = () => {
                   <SelectItem value="asr">ASR</SelectItem>
                   <SelectItem value="tts">TTS</SelectItem>
                   <SelectItem value="transcribe">Transcribe</SelectItem>
-                  <SelectItem value="translation">Translate</SelectItem>
+                  <SelectItem value="translate">Translate</SelectItem>
                   <SelectItem value="validate">Validate</SelectItem>
                 </SelectContent>
               </Select>
@@ -466,6 +470,7 @@ const AdminDashboard: React.FC = () => {
         </CardContent>
       </Card>
 
+      {/* Tasks Table */}
       <Card>
         <CardHeader>
           <CardTitle>All Tasks</CardTitle>
@@ -493,7 +498,7 @@ const AdminDashboard: React.FC = () => {
                 {tasks.map((task) => (
                   <TableRow key={task.id}>
                     <TableCell className="font-mono text-xs">{task.id.substring(0, 8)}...</TableCell>
-                    <TableCell>{getTaskTypeLabel(task.type)}</TableCell>
+                    <TableCell>{getTaskTypeLabel(task.task_type)}</TableCell>
                     <TableCell className="font-medium">{task.content?.task_title || 'Untitled'}</TableCell>
                     <TableCell>{task.source_language || '-'}</TableCell>
                     <TableCell>{task.target_language || '-'}</TableCell>
@@ -531,4 +536,4 @@ const AdminDashboard: React.FC = () => {
   );
 };
 
-export default AdminDashboard;
+export default AdminDashboard; 
