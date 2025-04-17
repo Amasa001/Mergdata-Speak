@@ -7,7 +7,7 @@ import { RoleSelector } from '@/components/auth/RoleSelector';
 import { LanguageSelector } from '@/components/auth/LanguageSelector';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/integrations/supabase/client';
 
 const Register: React.FC = () => {
   const navigate = useNavigate();
@@ -67,17 +67,45 @@ const Register: React.FC = () => {
         options: {
           data: {
             full_name: formData.fullName,
-            role: formData.role,
-            languages: formData.languages,
           }
         }
       });
       
       if (authError) throw authError;
       
+      // Store additional user data in profiles table
       if (authData.user) {
-        toast.success("Account created successfully! Please verify your email to continue.");
-        navigate('/login');
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({ 
+            id: authData.user.id,
+            full_name: formData.fullName,
+            role: formData.role,
+            languages: formData.languages,
+            is_admin: false
+          });
+          
+        if (profileError) throw profileError;
+        
+        toast.success("Account created successfully!");
+        
+        // Redirect based on user role
+        switch(formData.role) {
+          case 'asr_contributor':
+            navigate('/asr');
+            break;
+          case 'tts_contributor':
+            navigate('/tts');
+            break;
+          case 'transcriber':
+            navigate('/transcribe');
+            break;
+          case 'validator':
+            navigate('/validate');
+            break;
+          default:
+            navigate('/dashboard');
+        }
       }
     } catch (error: any) {
       console.error('Registration error:', error);
@@ -111,7 +139,6 @@ const Register: React.FC = () => {
                       onChange={handleInputChange}
                       placeholder="Enter your name"
                       required
-                      autoComplete="name"
                     />
                   </div>
                   
@@ -125,7 +152,6 @@ const Register: React.FC = () => {
                       onChange={handleInputChange}
                       placeholder="you@example.com"
                       required
-                      autoComplete="email"
                     />
                   </div>
                   
@@ -139,7 +165,6 @@ const Register: React.FC = () => {
                       onChange={handleInputChange}
                       placeholder="Create a password"
                       required
-                      autoComplete="new-password"
                     />
                   </div>
                   
@@ -153,7 +178,6 @@ const Register: React.FC = () => {
                       onChange={handleInputChange}
                       placeholder="Confirm your password"
                       required
-                      autoComplete="new-password"
                     />
                   </div>
                 </div>
