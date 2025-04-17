@@ -7,7 +7,7 @@ import { Link } from 'react-router-dom';
 
 interface Task {
   id: number;
-  type: 'asr' | 'tts' | 'transcription' | 'validation';
+  type: 'asr' | 'tts' | 'transcription' | 'validation' | 'translation';
   title: string;
   description: string;
   language: string;
@@ -26,6 +26,7 @@ export const TasksList: React.FC<TasksListProps> = ({ tasks }) => {
       case 'tts':
         return <Mic className="h-5 w-5 text-afri-orange" />;
       case 'transcription':
+      case 'translation':
         return <FileText className="h-5 w-5 text-afri-green" />;
       case 'validation':
         return <CheckCircle className="h-5 w-5 text-afri-blue" />;
