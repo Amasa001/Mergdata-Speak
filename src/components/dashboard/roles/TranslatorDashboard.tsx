@@ -1,12 +1,10 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Link } from 'react-router-dom';
 import { Languages, Book, BarChart, Clock, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
 import { Button } from '@/components/ui/button';
-import { AvailableTranslationTasks } from '@/components/dashboard/AvailableTranslationTasks';
 
 // Type for storing fetched stats
 interface TranslatorStats {
@@ -79,6 +77,7 @@ export const TranslatorDashboard: React.FC = () => {
 
     const fetchData = async () => {
       setIsLoading(true);
+      setIsLoadingTasks(true);
       try {
         // Fetch stats
         const { data: contributionData, error: statsError } = await supabase
@@ -136,10 +135,207 @@ export const TranslatorDashboard: React.FC = () => {
         })) || [];
         setRecentActivity(mappedActivity);
 
+        // Fetch available translation tasks
+        // 1. Fetch PENDING tasks matching user's languages (case-insensitive)
+        let pendingTasksQuery = supabase
+          .from('tasks')
+          .select('id, language, content, status') // Include status
+          .eq('type', 'translation')
+          .eq('status', 'pending');
+        if (userLanguages.length > 0) {
+            // Use ilike for case-insensitive matching with any language in the array
+            const conditions = userLanguages.map(lang => `language.ilike.${lang}`).join(',');
+            pendingTasksQuery = pendingTasksQuery.or(conditions);
+        }
+        const { data: pendingTasksData, error: pendingTasksError } = await pendingTasksQuery;
+        if (pendingTasksError) throw pendingTasksError;
+
+        // 2. Fetch tasks ASSIGNED to the user matching user's languages (case-insensitive)
+        let assignedTasksQuery = supabase
+          .from('tasks')
+          .select('id, language, content, status') // Include status
+          .eq('type', 'translation')
+          .eq('status', 'assigned')
+          .eq('assigned_to', userId);
+        if (userLanguages.length > 0) {
+           // Use ilike for case-insensitive matching with any language in the array
+           const conditions = userLanguages.map(lang => `language.ilike.${lang}`).join(',');
+           assignedTasksQuery = assignedTasksQuery.or(conditions);
+        }
+        const { data: assignedTasksData, error: assignedTasksError } = await assignedTasksQuery;
+        if (assignedTasksError) throw assignedTasksError;
+
+        // 3. Fetch REJECTED contributions for the current user matching user's languages (case-insensitive)
+        let rejectedContributionsQuery = supabase
+          .from('contributions')
+          .select('tasks!inner(id, language, content, status)') // Fetch related task data
+          .eq('user_id', userId)
+          .eq('status', 'rejected');
+
+        if (userLanguages.length > 0) {
+           // Filter related tasks by user languages (case-insensitive)
+           const conditions = userLanguages.map(lang => `language.ilike.${lang}`).join(',');
+           rejectedContributionsQuery = rejectedContributionsQuery.or(conditions, { foreignTable: 'tasks' });
+        }
+
+        const { data: rejectedContributionsData, error: rejectedContributionsError } = await rejectedContributionsQuery;
+
+        if (rejectedContributionsError) throw rejectedContributionsError;
+
+        // Combine and process tasks
+        const tasksMap: Record<number, {
+             id: number; 
+             language: string; 
+             content: any; 
+             status: string; // Store the task status ('pending' or 'assigned')
+             needsCorrection: boolean; 
+            }> = {};
+
+        // Add pending tasks
+        pendingTasksData?.forEach(task => {
+          const langKey = (task.language || 'Unknown').toLowerCase(); // Standardize key
+          if (!tasksMap[task.id]) { 
+            tasksMap[task.id] = {
+              id: task.id,
+              language: task.language || 'Unknown', // Keep original case for display
+              content: task.content,
+              status: task.status, // 'pending'
+              needsCorrection: false,
+            };
+          }
+        });
+        
+        // Add assigned tasks (that aren't already pending)
+        assignedTasksData?.forEach(task => {
+            const langKey = (task.language || 'Unknown').toLowerCase(); // Standardize key
+            if (!tasksMap[task.id]) { 
+                tasksMap[task.id] = {
+                    id: task.id,
+                    language: task.language || 'Unknown', // Keep original case for display
+                    content: task.content,
+                    status: task.status, // 'assigned'
+                    needsCorrection: false, 
+                };
+            }
+        });
+
+        // Mark tasks needing correction (from rejected contributions)
+        rejectedContributionsData?.forEach(contribution => {
+          const task = contribution.tasks;
+          if (task) {
+            const langKey = (task.language || 'Unknown').toLowerCase(); // Standardize key
+            if (tasksMap[task.id]) {
+              // Task exists (either pending or assigned), mark it as needing correction
+              tasksMap[task.id].needsCorrection = true;
+            } else {
+              // Task wasn't pending or assigned to user directly, but has a rejected contribution
+              // matching user language filter. Add it.
+              tasksMap[task.id] = {
+                id: task.id,
+                language: task.language || 'Unknown', // Keep original case for display
+                content: task.content,
+                status: task.status, // Status from the task itself
+                needsCorrection: true,
+              };
+            }
+          }
+        });
+
+        // Process tasks into language groups (using standardized lowercase keys)
+        const tasksByLanguage: Record<string, {
+            totalCount: number;
+            pendingCount: number; 
+            needsCorrectionCount: number; 
+            originalCaseLanguage: string; 
+            domains: Record<string, { 
+                totalCount: number; 
+                pendingCount: number; 
+                needsCorrectionCount: number; 
+            }>;
+        }> = {};
+
+        // Filter tasksMap to include only those genuinely available for work/correction
+        const availableTasksForGrouping = Object.values(tasksMap).filter(task => 
+          task.status === 'pending' || task.needsCorrection
+        );
+
+        // Now process only the filtered tasks
+        availableTasksForGrouping.forEach(task => {
+          const languageKey = (task.language || 'Unknown').toLowerCase(); // Use lowercase for grouping
+          const originalLanguage = task.language || 'Unknown'; // Keep original for display
+          const domain = (task.content && typeof task.content === 'object') 
+            ? ((task.content as any).domain || (task.content as any).batch_name || 'general') 
+            : 'general';
+
+          if (!tasksByLanguage[languageKey]) {
+            tasksByLanguage[languageKey] = { 
+              totalCount: 0, // This will now represent truly available tasks
+              pendingCount: 0, 
+              needsCorrectionCount: 0, 
+              originalCaseLanguage: originalLanguage, 
+              domains: {} 
+            };
+          }
+          
+          if (task.language) {
+             tasksByLanguage[languageKey].originalCaseLanguage = task.language;
+          }
+          
+          if (!tasksByLanguage[languageKey].domains[domain]) {
+            tasksByLanguage[languageKey].domains[domain] = { totalCount: 0, pendingCount: 0, needsCorrectionCount: 0 };
+          }
+
+          // Increment counts for the available task
+          tasksByLanguage[languageKey].totalCount++;
+          tasksByLanguage[languageKey].domains[domain].totalCount++;
+
+          if (task.needsCorrection) {
+            tasksByLanguage[languageKey].needsCorrectionCount++;
+            tasksByLanguage[languageKey].domains[domain].needsCorrectionCount++;
+          } else if (task.status === 'pending') { // Only pending tasks count here now
+            tasksByLanguage[languageKey].pendingCount++;
+            tasksByLanguage[languageKey].domains[domain].pendingCount++;
+          } 
+        });
+
+        // Convert to array format for rendering
+        interface AvailableTaskGroupUpdated {
+            language: string; // This will hold the original casing
+            totalCount: number;
+            pendingCount: number;
+            needsCorrectionCount: number;
+            domains: { 
+                domain: string; 
+                totalCount: number; 
+                pendingCount: number;
+                needsCorrectionCount: number; 
+            }[];
+        }
+        
+        const taskGroups: AvailableTaskGroupUpdated[] = Object.entries(tasksByLanguage).map(([_, data]) => ({
+          language: data.originalCaseLanguage, // Use original case language for display
+          totalCount: data.totalCount,
+          pendingCount: data.pendingCount,
+          needsCorrectionCount: data.needsCorrectionCount,
+          domains: Object.entries(data.domains).map(([domain, domainData]) => ({ 
+            domain,
+            totalCount: domainData.totalCount,
+            pendingCount: domainData.pendingCount,
+            needsCorrectionCount: domainData.needsCorrectionCount,
+          }))
+            .sort((a, b) => b.totalCount - a.totalCount), // Sort domains by count
+        }));
+
+        // Sort languages by total task count (most tasks first)
+        taskGroups.sort((a, b) => b.totalCount - a.totalCount);
+
+        setAvailableTasks(taskGroups as any); // Use 'as any' for now to avoid immediate type conflict with state
+        
       } catch (error: any) {
         console.error('Error fetching translator dashboard data:', error);
       } finally {
         setIsLoading(false);
+        setIsLoadingTasks(false);
       }
     };
 
@@ -156,23 +352,24 @@ export const TranslatorDashboard: React.FC = () => {
     }
   };
   
-  const timeAgo = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const secondsPast = (now.getTime() - date.getTime()) / 1000;
+   const timeAgo = (dateString: string) => {
+        const date = new Date(dateString);
+        const now = new Date();
+        const secondsPast = (now.getTime() - date.getTime()) / 1000;
 
-    if (secondsPast < 60) {
-        return parseInt(String(secondsPast)) + 's ago';
-    }
-    if (secondsPast < 3600) {
-        return parseInt(String(secondsPast / 60)) + 'm ago';
-    }
-    if (secondsPast <= 86400) {
-        return parseInt(String(secondsPast / 3600)) + 'h ago';
-    }
-    // For simplicity, return date if older than a day
-    return date.toLocaleDateString();
-  };
+        if (secondsPast < 60) {
+            return parseInt(String(secondsPast)) + 's ago';
+        }
+        if (secondsPast < 3600) {
+            return parseInt(String(secondsPast / 60)) + 'm ago';
+        }
+        if (secondsPast <= 86400) {
+            return parseInt(String(secondsPast / 3600)) + 'h ago';
+        }
+        // For simplicity, return date if older than a day
+        return date.toLocaleDateString();
+    };
+
 
   if (isLoading) {
     return (
@@ -237,7 +434,60 @@ export const TranslatorDashboard: React.FC = () => {
       </div>
 
       {/* Available Translation Tasks */}
-      <AvailableTranslationTasks />
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Available Translation Tasks</CardTitle>
+            <CardDescription>Tasks available for translation, including any needing correction.</CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoadingTasks ? (
+            <div className="flex justify-center items-center h-20">
+              <Loader2 className="h-6 w-6 animate-spin text-afri-purple" />
+            </div>
+          ) : availableTasks.length === 0 ? (
+            <p className="text-center text-gray-500 py-4">No translation tasks currently available for your languages.</p>
+          ) : (
+            <div className="space-y-4">
+              {availableTasks.map((group) => (
+                <Card key={group.language} className="p-4 border shadow-sm">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="text-lg font-semibold text-afri-blue">{group.language}</h3>
+                     <Button asChild size="sm">
+                       <Link to={`/translate?language=${group.language.toLowerCase()}`}>
+                         Translate {group.language}
+                       </Link>
+                     </Button>
+                  </div>
+                  <div className="text-sm text-gray-600 mb-3">
+                     Total Tasks: {group.totalCount}
+                     {group.needsCorrectionCount > 0 && (
+                        <span className="ml-3 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                           <AlertCircle className="h-3 w-3 mr-1"/> {group.needsCorrectionCount} Need Correction
+                        </span>
+                     )}
+                   </div>
+                  
+                  {/* Domain Breakdown */}
+                  <div className="space-y-1 pl-4 border-l-2 border-gray-200">
+                    {group.domains.map(domain => (
+                      <div key={domain.domain} className="text-sm text-gray-500 flex justify-between items-center">
+                        <span>
+                          <span className="capitalize font-medium text-gray-700">{domain.domain}:</span> {domain.totalCount} task(s)
+                        </span>
+                         {domain.needsCorrectionCount > 0 && (
+                           <span className="text-xs text-red-600">({domain.needsCorrectionCount} correction needed)</span>
+                         )}
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Recent Activity */}
       <Card className="border-none shadow-sm">
@@ -268,4 +518,4 @@ export const TranslatorDashboard: React.FC = () => {
       </Card>
     </div>
   );
-};
+}; 
