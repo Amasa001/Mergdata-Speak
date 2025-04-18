@@ -60,52 +60,53 @@ const Register: React.FC = () => {
     setIsLoading(true);
     
     try {
-      // Register user with Supabase Auth
+      // Register user with Supabase Auth, storing ALL user data in the user_metadata
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
         options: {
           data: {
             full_name: formData.fullName,
+            role: formData.role,
+            languages: formData.languages,
+            // Add a flag to indicate this account needs profile creation
+            profile_pending: true
           }
         }
       });
       
       if (authError) throw authError;
-      
-      // Store additional user data in profiles table
+
       if (authData.user) {
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert({ 
-            id: authData.user.id,
-            full_name: formData.fullName,
-            role: formData.role,
-            languages: formData.languages,
-            is_admin: false
-          });
-          
-        if (profileError) throw profileError;
+        // Skip profile creation during registration - it will be handled in the Dashboard component
+        toast.success("Account created successfully! Redirecting to dashboard...");
         
-        toast.success("Account created successfully!");
+        // Show a friendly message about profile setup
+        toast.info("Your profile will be set up when you access the dashboard");
         
-        // Redirect based on user role
-        switch(formData.role) {
-          case 'asr_contributor':
-            navigate('/asr');
-            break;
-          case 'tts_contributor':
-            navigate('/tts');
-            break;
-          case 'transcriber':
-            navigate('/transcribe');
-            break;
-          case 'validator':
-            navigate('/validate');
-            break;
-          default:
-            navigate('/dashboard');
-        }
+        // Short delay to allow toasts to be visible
+        setTimeout(() => {
+          // Redirect based on user role
+          switch(formData.role) {
+            case 'asr_contributor':
+              navigate('/asr');
+              break;
+            case 'tts_contributor':
+              navigate('/tts');
+              break;
+            case 'transcriber':
+              navigate('/transcribe');
+              break;
+            case 'validator':
+              navigate('/validate');
+              break;
+            default:
+              navigate('/dashboard');
+          }
+        }, 1500);
+      } else {
+        toast.error("User was created but session is not available. Please log in.");
+        navigate('/login');
       }
     } catch (error: any) {
       console.error('Registration error:', error);
@@ -245,12 +246,18 @@ const Register: React.FC = () => {
               )}
             </div>
             
-            <p className="text-center text-sm text-gray-500">
+            <div className="text-center text-sm text-gray-500">
               Already have an account?{' '}
               <Link to="/login" className="text-afri-orange hover:underline">
-                Log in
+                Sign in
               </Link>
-            </p>
+            </div>
+            
+            {/* Add information about system access */}
+            <div className="text-xs text-gray-500 text-center mt-3">
+              Note: You will have immediate access to the platform after registration, 
+              even if you see a profile setup message.
+            </div>
           </CardFooter>
         </Card>
       </div>

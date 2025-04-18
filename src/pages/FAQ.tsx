@@ -11,8 +11,8 @@ import { Link } from 'react-router-dom';
 const FAQ: React.FC = () => {
   const generalFaqs = [
     {
-      question: "What is AfriSpeakNexus?",
-      answer: "AfriSpeakNexus is a platform dedicated to building speech technology datasets for African languages. We collaborate with native speakers to collect, transcribe, and validate speech data that can be used to develop speech recognition and text-to-speech systems."
+      question: "What is Mergdata Speak?",
+      answer: "Mergdata Speak is a platform dedicated to building speech technology datasets for African languages. We collaborate with native speakers to collect, transcribe, and validate speech data that can be used to develop speech recognition and text-to-speech systems."
     },
     {
       question: "Why focus on African languages?",
@@ -71,7 +71,7 @@ const FAQ: React.FC = () => {
       <div className="max-w-3xl mx-auto">
         <h1 className="text-4xl font-bold mb-3 text-center">Frequently Asked Questions</h1>
         <p className="text-gray-600 text-center mb-12 max-w-2xl mx-auto">
-          Find answers to common questions about AfriSpeakNexus and how to contribute.
+          Find answers to common questions about Mergdata Speak and how to contribute.
         </p>
 
         <div className="space-y-10">

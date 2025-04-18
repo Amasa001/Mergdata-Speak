@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
@@ -30,23 +29,11 @@ export const HeroSection: React.FC = () => {
               that preserve and promote the rich diversity of African languages.
             </motion.p>
             
-            <motion.div 
-              className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4 pt-4"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-            >
-              <Link to="/register">
-                <Button size="lg" className="bg-afri-orange hover:bg-afri-orange/90">
-                  Get Started
-                </Button>
-              </Link>
-              <Link to="/how-it-works">
-                <Button size="lg" variant="outline">
-                  Learn More
-                </Button>
-              </Link>
-            </motion.div>
+            <div className="flex flex-col sm:flex-row gap-4 mt-8">
+              <Button size="lg" asChild>
+                <Link to="/register">Get Started</Link>
+              </Button>
+            </div>
             
             <motion.div 
               className="pt-8 grid grid-cols-2 md:grid-cols-4 gap-4"

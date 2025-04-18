@@ -26,6 +26,12 @@ const Profile: React.FC = () => {
     avatarUrl: ''
   });
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [userStats, setUserStats] = useState({
+    contributions: 0,
+    tasksCompleted: 0,
+    languages: 0,
+    joinDate: ''
+  });
   
   // Use valid badge types from the BadgeType definition
   const userBadges: ('asr' | 'tts' | 'translate' | 'transcribe' | 'validate')[] = [
@@ -33,14 +39,6 @@ const Profile: React.FC = () => {
     "tts",
     "translate"
   ];
-  
-  // Mock user stats - in a real app, these would come from the database
-  const userStats = {
-    contributions: 256,
-    tasksCompleted: 32,
-    languages: 3,
-    joinDate: '2024-01-15'
-  };
 
   useEffect(() => {
     async function fetchProfile() {
@@ -144,6 +142,10 @@ const Profile: React.FC = () => {
           console.error('No profile data found for user');
           toast.error('Profile not found');
         }
+        
+        // Fetch real user statistics
+        await fetchUserStats(user.id);
+        
       } catch (error) {
         console.error('Exception during profile fetch:', error);
         toast.error('Something went wrong');
@@ -155,6 +157,64 @@ const Profile: React.FC = () => {
     
     fetchProfile();
   }, [navigate]);
+  
+  // Fetch actual user statistics from database
+  const fetchUserStats = async (userId: string) => {
+    try {
+      // Get contribution count
+      const { count: contributionsCount, error: contributionsError } = await supabase
+        .from('contributions')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId);
+      
+      if (contributionsError) {
+        console.error('Error fetching contribution count:', contributionsError);
+      }
+      
+      // Get tasks completed - use a different approach that avoids the problematic .in() query
+      // Instead of filtering with .in(), we'll get all contributions and check the status in code
+      let tasksCount = 0;
+      try {
+        const { data: contributions, error: fetchError } = await supabase
+          .from('contributions')
+          .select('status')
+          .eq('user_id', userId);
+          
+        if (!fetchError && contributions) {
+          // Count contributions with valid statuses manually
+          const completedStatuses = ['validated', 'completed', 'finalized', 'pending_validation'];
+          tasksCount = contributions.filter(c => 
+            completedStatuses.includes(c.status as string)
+          ).length;
+        }
+      } catch (taskErr) {
+        console.error('Error in task count calculation:', taskErr);
+      }
+      
+      // Get user's creation date from auth.users if possible
+      // For Supabase we can use the created_at from the user profile
+      const { data: userData, error: userError } = await supabase
+        .from('profiles')
+        .select('created_at')
+        .eq('id', userId)
+        .single();
+      
+      if (userError) {
+        console.error('Error fetching user join date:', userError);
+      }
+      
+      // Set the real statistics
+      setUserStats({
+        contributions: contributionsCount || 0,
+        tasksCompleted: tasksCount || 0,
+        languages: profile.languages.length || 0,
+        joinDate: userData?.created_at || new Date().toISOString()
+      });
+      
+    } catch (error) {
+      console.error('Error fetching user statistics:', error);
+    }
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -202,6 +262,13 @@ const Profile: React.FC = () => {
       }
       
       console.log("Profile updated successfully");
+      
+      // Update stats to reflect new language count
+      setUserStats(prev => ({
+        ...prev,
+        languages: profile.languages.length
+      }));
+      
       setSaveSuccess(true);
       toast.success('Profile updated successfully!');
     } catch (error: any) {
@@ -259,19 +326,19 @@ const Profile: React.FC = () => {
                     <div className="grid grid-cols-2 gap-2 mt-2">
                       <div className="bg-gray-50 p-2 rounded text-center">
                         <p className="text-sm text-gray-500">Contributions</p>
-                        <p className="font-medium">{userStats.contributions}</p>
+                        <p className="font-medium">{userStats.contributions || 0}</p>
                       </div>
                       <div className="bg-gray-50 p-2 rounded text-center">
                         <p className="text-sm text-gray-500">Tasks</p>
-                        <p className="font-medium">{userStats.tasksCompleted}</p>
+                        <p className="font-medium">{userStats.tasksCompleted || 0}</p>
                       </div>
                       <div className="bg-gray-50 p-2 rounded text-center">
                         <p className="text-sm text-gray-500">Languages</p>
-                        <p className="font-medium">{userStats.languages}</p>
+                        <p className="font-medium">{userStats.languages || 0}</p>
                       </div>
                       <div className="bg-gray-50 p-2 rounded text-center">
                         <p className="text-sm text-gray-500">Joined</p>
-                        <p className="font-medium">{new Date(userStats.joinDate).toLocaleDateString()}</p>
+                        <p className="font-medium">{userStats.joinDate ? new Date(userStats.joinDate).toLocaleDateString() : 'New User'}</p>
                       </div>
                     </div>
                   </div>

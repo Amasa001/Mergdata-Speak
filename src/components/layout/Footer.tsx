@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Globe, Github, Twitter } from 'lucide-react';
@@ -26,13 +25,12 @@ export const Footer: React.FC = () => {
             </div>
           </div>
           
-          <div>
-            <h3 className="font-medium mb-4">Platform</h3>
+          <div className="w-full md:w-1/4 mb-8 md:mb-0">
+            <h4 className="text-lg font-semibold mb-4 text-gray-800">Quick Links</h4>
             <ul className="space-y-2">
-              <li><Link to="/about" className="text-gray-600 hover:text-afri-orange">About</Link></li>
-              <li><Link to="/how-it-works" className="text-gray-600 hover:text-afri-orange">How It Works</Link></li>
-              <li><Link to="/languages" className="text-gray-600 hover:text-afri-orange">Languages</Link></li>
               <li><Link to="/faq" className="text-gray-600 hover:text-afri-orange">FAQ</Link></li>
+              <li><Link to="/terms" className="text-gray-600 hover:text-afri-orange">Terms of Service</Link></li>
+              <li><Link to="/privacy" className="text-gray-600 hover:text-afri-orange">Privacy Policy</Link></li>
             </ul>
           </div>
           

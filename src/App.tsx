@@ -22,7 +22,6 @@ import TranslateTask from "./pages/TranslateTask";
 import ValidateTask from "./pages/ValidateTask";
 import AdminTaskCreator from "./pages/AdminTaskCreator";
 import Profile from "./pages/Profile";
-import HowItWorks from "./pages/HowItWorks";
 import FAQ from "./pages/FAQ";
 import Leaderboard from "./pages/Leaderboard";
 import AdminDashboard from "./pages/AdminDashboard";
@@ -65,7 +64,6 @@ const App = () => (
             <Route index element={<Index />} />
             <Route path="register" element={<Register />} />
             <Route path="login" element={<Login />} />
-            <Route path="how-it-works" element={<HowItWorks />} />
             <Route path="faq" element={<FAQ />} />
           </Route>
 

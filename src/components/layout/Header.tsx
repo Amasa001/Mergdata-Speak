@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -13,11 +12,15 @@ import {
   DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu';
 import { supabase } from '@/integrations/supabase/client';
+import { Skeleton } from '@/components/ui/skeleton';
+import { SheetHeader, SheetTitle } from '@/components/ui/sheet';
 
 export const Header: React.FC = () => {
   const isMobile = useIsMobile();
   const [user, setUser] = useState<any>(null);
   const [userName, setUserName] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [session, setSession] = useState(false);
 
   useEffect(() => {
     // Check for user session on component mount
@@ -37,6 +40,7 @@ export const Header: React.FC = () => {
           setUserName(profileData.full_name);
         }
       }
+      setLoading(false);
     };
     
     fetchUser();
@@ -63,6 +67,7 @@ export const Header: React.FC = () => {
           setUser(null);
           setUserName(null);
         }
+        setSession(!!session);
       }
     );
     
@@ -81,16 +86,35 @@ export const Header: React.FC = () => {
       <Link to="/about" className="text-foreground/80 hover:text-foreground transition-colors">
         About
       </Link>
-      <Link to="/languages" className="text-foreground/80 hover:text-foreground transition-colors">
-        Languages
-      </Link>
-      <Link to="/how-it-works" className="text-foreground/80 hover:text-foreground transition-colors">
-        How It Works
-      </Link>
       <Link to="/faq" className="text-foreground/80 hover:text-foreground transition-colors">
         FAQ
       </Link>
     </>
+  );
+
+  const UserDropdown = () => (
+    <div className="flex items-center space-x-3">
+      <Link to="/dashboard">
+        <Button variant="outline">Dashboard</Button>
+      </Link>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" className="flex items-center space-x-1">
+            <User className="h-4 w-4 mr-1" />
+            <span className="max-w-[120px] truncate">{userName || 'Account'}</span>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem>
+            <Link to="/profile" className="flex w-full">Profile</Link>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer">
+            <LogOut className="h-4 w-4 mr-2" /> Sign Out
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 
   return (
@@ -99,7 +123,7 @@ export const Header: React.FC = () => {
         <Link to="/" className="flex items-center space-x-2">
           <Globe className="h-8 w-8 text-afri-orange" />
           <span className="font-bold text-xl bg-gradient-to-r from-afri-orange to-afri-brown bg-clip-text text-transparent">
-            AfriSpeakNexus
+            MergData Speak
           </span>
         </Link>
 

@@ -31,6 +31,38 @@ const Dashboard: React.FC = () => {
         
         setIsAuthenticated(true);
         
+        // Check if this is a user with pending profile creation
+        const profilePending = user.user_metadata?.profile_pending === true;
+        
+        // If profile is pending creation, try to create it now
+        if (profilePending) {
+          console.log("Profile pending creation detected, attempting to create profile");
+          try {
+            const { error: profileCreateError } = await supabase
+              .from('profiles')
+              .insert({ 
+                id: user.id,
+                full_name: user.user_metadata.full_name || '',
+                role: user.user_metadata.role || '',
+                languages: user.user_metadata.languages || [],
+                is_admin: false
+              });
+              
+            if (profileCreateError) {
+              console.warn('Could not create profile from metadata:', profileCreateError);
+              // If creation failed, we'll fall back to metadata below
+            } else {
+              console.log("Successfully created profile for user");
+              // Update user metadata to remove pending flag
+              await supabase.auth.updateUser({
+                data: { profile_pending: false }
+              });
+            }
+          } catch (createErr) {
+            console.warn('Exception creating profile from metadata:', createErr);
+          }
+        }
+        
         // Fetch user profile from profiles table
         const { data: profileData, error } = await supabase
           .from('profiles')
@@ -40,7 +72,18 @@ const Dashboard: React.FC = () => {
           
         if (error) {
           console.error('Error fetching user profile:', error);
-          toast.error('Failed to load your profile');
+          
+          // Fall back to user metadata if available
+          if (user.user_metadata) {
+            setUserName(user.user_metadata.full_name || null);
+            setUserRole(user.user_metadata.role || null);
+            console.log('Using role from metadata:', user.user_metadata.role);
+            
+            // Display a message to the user
+            toast.info('Using your profile information from account metadata.');
+          } else {
+            toast.error('Failed to load your profile');
+          }
         } else if (profileData) {
           setUserName(profileData.full_name);
           setUserRole(profileData.role);
@@ -152,7 +195,7 @@ const Dashboard: React.FC = () => {
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold">{getRoleTitle()}</h1>
-          <p className="text-gray-500">Welcome back{userName ? `, ${userName}` : ''} to AfriSpeakNexus</p>
+          <p className="text-gray-500">Welcome back{userName ? `, ${userName}` : ''} to Mergdata Speak</p>
         </div>
         <div className="flex space-x-2 mt-4 md:mt-0">
           {getActionButtons()}
