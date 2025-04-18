@@ -124,6 +124,10 @@ const TTSTask: React.FC = () => {
       }
       setUserId(user.id);
 
+      // Inside the initializeTasks function, after getting the user but before creating task arrays
+      const projectIdParam = query.get('project_id');
+      const projectId = projectIdParam ? parseInt(projectIdParam, 10) : null;
+
       try {
         // Initialize arrays for tasks
         let pendingTasks: RejectedTask[] = [];
@@ -188,12 +192,20 @@ const TTSTask: React.FC = () => {
           }
         } else {
           // 2. Fetch pending TTS tasks (only if no specific task was requested)
-          const { data: fetchedPendingTasks, error: pendingError } = await supabase
+          let pendingTasksQuery = supabase
             .from('tasks')
             .select('*')
             .eq('type', 'tts')
             .eq('status', 'pending')
             .order('created_at', { ascending: true });
+
+          // Filter by project if projectId is provided
+          if (projectId && !isNaN(projectId)) {
+            console.log(`Filtering TTS tasks by project ID: ${projectId}`);
+            pendingTasksQuery = pendingTasksQuery.eq('project_id', projectId);
+          }
+
+          const { data: fetchedPendingTasks, error: pendingError } = await pendingTasksQuery;
 
           if (pendingError) throw pendingError;
           pendingTasks = fetchedPendingTasks as RejectedTask[] || [];

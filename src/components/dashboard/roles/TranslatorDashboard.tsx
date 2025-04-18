@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Link } from 'react-router-dom';
-import { Languages, Book, BarChart, Clock, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { Languages, Book, BarChart, Clock, Loader2, CheckCircle, AlertCircle, ArrowRight } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 
 // Type for storing fetched stats
 interface TranslatorStats {
@@ -26,8 +27,10 @@ interface RecentActivity {
 }
 
 // Type for available translation tasks
-interface AvailableTaskGroup {
-  language: string;
+interface AvailableTaskGroupUpdated {
+  language: string; // Target language
+  sourceLanguage?: string; // Source language
+  highestPriority: Database["public"]["Enums"]["priority_level"]; // Highest priority in group
   totalCount: number;
   pendingCount: number;
   needsCorrectionCount: number;
@@ -44,7 +47,7 @@ export const TranslatorDashboard: React.FC = () => {
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
-  const [availableTasks, setAvailableTasks] = useState<AvailableTaskGroup[]>([]);
+  const [availableTasks, setAvailableTasks] = useState<AvailableTaskGroupUpdated[]>([]);
   const [isLoadingTasks, setIsLoadingTasks] = useState(true);
   const [userLanguages, setUserLanguages] = useState<string[]>([]);
 
@@ -82,7 +85,7 @@ export const TranslatorDashboard: React.FC = () => {
         // Fetch stats
         const { data: contributionData, error: statsError } = await supabase
           .from('contributions')
-          .select('status, tasks!inner(language, type)')
+          .select('status, tasks!inner(language, type, priority)')
           .eq('user_id', userId)
           .eq('tasks.type', 'translation');
 
@@ -139,7 +142,7 @@ export const TranslatorDashboard: React.FC = () => {
         // 1. Fetch PENDING tasks matching user's languages (case-insensitive)
         let pendingTasksQuery = supabase
           .from('tasks')
-          .select('id, language, content, status') // Include status
+          .select('id, language, content, status, priority')
           .eq('type', 'translation')
           .eq('status', 'pending');
         if (userLanguages.length > 0) {
@@ -153,7 +156,7 @@ export const TranslatorDashboard: React.FC = () => {
         // 2. Fetch tasks ASSIGNED to the user matching user's languages (case-insensitive)
         let assignedTasksQuery = supabase
           .from('tasks')
-          .select('id, language, content, status') // Include status
+          .select('id, language, content, status, priority')
           .eq('type', 'translation')
           .eq('status', 'assigned')
           .eq('assigned_to', userId);
@@ -168,7 +171,7 @@ export const TranslatorDashboard: React.FC = () => {
         // 3. Fetch REJECTED contributions for the current user matching user's languages (case-insensitive)
         let rejectedContributionsQuery = supabase
           .from('contributions')
-          .select('tasks!inner(id, language, content, status)') // Fetch related task data
+          .select('tasks!inner(id, language, content, status, priority)')
           .eq('user_id', userId)
           .eq('status', 'rejected');
 
@@ -185,9 +188,11 @@ export const TranslatorDashboard: React.FC = () => {
         // Combine and process tasks
         const tasksMap: Record<number, {
              id: number; 
-             language: string; 
+             language: string; // Target language
+             source_language: string; // Source language
              content: any; 
              status: string; // Store the task status ('pending' or 'assigned')
+             priority: Database["public"]["Enums"]["priority_level"]; // Task priority
              needsCorrection: boolean; 
             }> = {};
 
@@ -198,8 +203,10 @@ export const TranslatorDashboard: React.FC = () => {
             tasksMap[task.id] = {
               id: task.id,
               language: task.language || 'Unknown', // Keep original case for display
+              source_language: (task.content as any)?.source_language || 'Unknown', // Extract source language
               content: task.content,
               status: task.status, // 'pending'
+              priority: task.priority, // Store priority
               needsCorrection: false,
             };
           }
@@ -212,8 +219,10 @@ export const TranslatorDashboard: React.FC = () => {
                 tasksMap[task.id] = {
                     id: task.id,
                     language: task.language || 'Unknown', // Keep original case for display
+                    source_language: (task.content as any)?.source_language || 'Unknown', // Extract source language
                     content: task.content,
                     status: task.status, // 'assigned'
+                    priority: task.priority, // Store priority
                     needsCorrection: false, 
                 };
             }
@@ -233,8 +242,10 @@ export const TranslatorDashboard: React.FC = () => {
               tasksMap[task.id] = {
                 id: task.id,
                 language: task.language || 'Unknown', // Keep original case for display
+                source_language: (task.content as any)?.source_language || 'Unknown', // Extract source language
                 content: task.content,
                 status: task.status, // Status from the task itself
+                priority: task.priority, // Store priority
                 needsCorrection: true,
               };
             }
@@ -246,7 +257,9 @@ export const TranslatorDashboard: React.FC = () => {
             totalCount: number;
             pendingCount: number; 
             needsCorrectionCount: number; 
-            originalCaseLanguage: string; 
+            originalCaseLanguage: string; // Target Language
+            sourceLanguage?: string; // Store a representative source language
+            highestPriority: Database["public"]["Enums"]["priority_level"]; // Store highest priority
             domains: Record<string, { 
                 totalCount: number; 
                 pendingCount: number; 
@@ -258,6 +271,9 @@ export const TranslatorDashboard: React.FC = () => {
         const availableTasksForGrouping = Object.values(tasksMap).filter(task => 
           task.status === 'pending' || task.needsCorrection
         );
+
+        // Helper to compare priorities
+        const priorityOrder = { low: 1, medium: 2, high: 3 };
 
         // Now process only the filtered tasks
         availableTasksForGrouping.forEach(task => {
@@ -273,8 +289,18 @@ export const TranslatorDashboard: React.FC = () => {
               pendingCount: 0, 
               needsCorrectionCount: 0, 
               originalCaseLanguage: originalLanguage, 
+              sourceLanguage: task.source_language, // Set initial source language
+              highestPriority: 'low', // Initialize with lowest priority
               domains: {} 
             };
+          } else if (!tasksByLanguage[languageKey].sourceLanguage && task.source_language && task.source_language !== 'Unknown') {
+            // Update source language if it wasn't set yet or was 'Unknown'
+            tasksByLanguage[languageKey].sourceLanguage = task.source_language;
+          }
+          
+          // Update highest priority
+          if (priorityOrder[task.priority] > priorityOrder[tasksByLanguage[languageKey].highestPriority]) {
+            tasksByLanguage[languageKey].highestPriority = task.priority;
           }
           
           if (task.language) {
@@ -299,21 +325,10 @@ export const TranslatorDashboard: React.FC = () => {
         });
 
         // Convert to array format for rendering
-        interface AvailableTaskGroupUpdated {
-            language: string; // This will hold the original casing
-            totalCount: number;
-            pendingCount: number;
-            needsCorrectionCount: number;
-            domains: { 
-                domain: string; 
-                totalCount: number; 
-                pendingCount: number;
-                needsCorrectionCount: number; 
-            }[];
-        }
-        
         const taskGroups: AvailableTaskGroupUpdated[] = Object.entries(tasksByLanguage).map(([_, data]) => ({
           language: data.originalCaseLanguage, // Use original case language for display
+          sourceLanguage: data.sourceLanguage,
+          highestPriority: data.highestPriority,
           totalCount: data.totalCount,
           pendingCount: data.pendingCount,
           needsCorrectionCount: data.needsCorrectionCount,
@@ -329,7 +344,7 @@ export const TranslatorDashboard: React.FC = () => {
         // Sort languages by total task count (most tasks first)
         taskGroups.sort((a, b) => b.totalCount - a.totalCount);
 
-        setAvailableTasks(taskGroups as any); // Use 'as any' for now to avoid immediate type conflict with state
+        setAvailableTasks(taskGroups);
         
       } catch (error: any) {
         console.error('Error fetching translator dashboard data:', error);
@@ -370,6 +385,18 @@ export const TranslatorDashboard: React.FC = () => {
         return date.toLocaleDateString();
     };
 
+  const getPriorityBadge = (priority: Database["public"]["Enums"]["priority_level"]) => {
+    switch (priority) {
+      case 'high':
+        return <Badge variant="destructive">High Priority</Badge>;
+      case 'medium':
+        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">Medium Priority</Badge>;
+      case 'low':
+        return <Badge variant="outline">Low Priority</Badge>;
+      default:
+        return null;
+    }
+  };
 
   if (isLoading) {
     return (
@@ -452,22 +479,29 @@ export const TranslatorDashboard: React.FC = () => {
             <div className="space-y-4">
               {availableTasks.map((group) => (
                 <Card key={group.language} className="p-4 border shadow-sm">
-                  <div className="flex justify-between items-center mb-2">
-                    <h3 className="text-lg font-semibold text-afri-blue">{group.language}</h3>
+                  <div className="flex justify-between items-center mb-3">
+                    <div>
+                      <h3 className="text-lg font-semibold text-afri-blue flex items-center gap-2">
+                        <span>{group.sourceLanguage || 'Unknown'}</span>
+                        <ArrowRight className="h-4 w-4 text-gray-400"/>
+                        <span>{group.language}</span> 
+                      </h3>
+                      <div className="flex items-center gap-3 mt-1">
+                         {getPriorityBadge(group.highestPriority)} 
+                        <span className="text-sm text-gray-500">Available Tasks: {group.totalCount}</span>
+                         {group.needsCorrectionCount > 0 && (
+                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                             <AlertCircle className="h-3 w-3 mr-1"/> {group.needsCorrectionCount} Need Correction
+                           </span>
+                         )}
+                      </div>
+                    </div>
                      <Button asChild size="sm">
-                       <Link to={`/translate?language=${group.language.toLowerCase()}`}>
-                         Translate {group.language}
+                       <Link to={`/translate?language=${group.language.toLowerCase()}${group.sourceLanguage ? `&source_language=${group.sourceLanguage.toLowerCase()}` : ''}${group.needsCorrectionCount > 0 ? '&corrections=true' : ''}`}>
+                         {group.needsCorrectionCount > 0 ? 'Correct Task(s)' : 'Translate'}
                        </Link>
                      </Button>
                   </div>
-                  <div className="text-sm text-gray-600 mb-3">
-                     Total Tasks: {group.totalCount}
-                     {group.needsCorrectionCount > 0 && (
-                        <span className="ml-3 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                           <AlertCircle className="h-3 w-3 mr-1"/> {group.needsCorrectionCount} Need Correction
-                        </span>
-                     )}
-                   </div>
                   
                   {/* Domain Breakdown */}
                   <div className="space-y-1 pl-4 border-l-2 border-gray-200">
@@ -503,12 +537,23 @@ export const TranslatorDashboard: React.FC = () => {
               {recentActivity.map((item) => (
                 <div key={item.id} className="flex items-center justify-between py-2 border-b last:border-0">
                   <div>
-                    <p className="font-medium">{item.task_title}</p>
+                    {item.status === 'rejected' ? (
+                       <Link to={`/translate?contribution_id=${item.id}`} className="font-medium text-afri-blue hover:underline">
+                          {item.task_title} (Needs Correction)
+                       </Link>
+                    ) : (
+                       <p className="font-medium">{item.task_title}</p>
+                    )}
                     <p className="text-sm text-gray-500">{item.source_language} → {item.target_language}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-sm">{timeAgo(item.created_at)}</p>
                     {formatStatus(item.status)}
+                     {item.status === 'rejected' && (
+                        <Button asChild variant="link" size="sm" className="p-0 h-auto text-afri-red">
+                            <Link to={`/translate?contribution_id=${item.id}`}>Correct Task</Link>
+                        </Button>
+                     )}
                   </div>
                 </div>
               ))}

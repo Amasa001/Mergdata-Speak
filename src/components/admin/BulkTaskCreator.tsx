@@ -36,9 +36,9 @@ const availableTaskTypes: TaskType[] = ['asr', 'tts', 'translation', 'transcript
 const sampleTemplates = {
   asr: [], // Indicates ASR supports bulk, but via ZIP, not CSV/Excel
   translation: [
-    { source_text: "Hello, how are you?", task_title: "Greeting translation", task_description: "Translate this greeting to the target language", source_language: "English", domain: "general" },
-    { source_text: "Welcome to our community.", task_title: "Welcome message", task_description: "Translate this welcome message accurately", source_language: "English", domain: "general" },
-    { source_text: "Please wash your hands regularly.", task_title: "Health instruction", task_description: "Translate this health advice clearly", source_language: "English", domain: "health" }
+    { source_text: "Hello, how are you?", task_title: "Greeting translation", task_description: "Translate this greeting to the target language", source_language: "English", target_language: "Akan", domain: "general" },
+    { source_text: "Welcome to our community.", task_title: "Welcome message", task_description: "Translate this welcome message accurately", source_language: "English", target_language: "Ewe", domain: "general" },
+    { source_text: "Please wash your hands regularly.", task_title: "Health instruction", task_description: "Translate this health advice clearly", source_language: "English", target_language: "Ga", domain: "health" }
   ],
   tts: [
     { text_to_speak: "The quick brown fox jumps over the lazy dog.", task_title: "Pronunciation practice", task_description: "Read this sentence clearly with correct pronunciation" },
@@ -63,6 +63,7 @@ export const BulkTaskCreator: React.FC = () => {
   const [batchName, setBatchName] = useState('');
   const [taskType, setTaskType] = useState<TaskType | ''>('');
   const [language, setLanguage] = useState('');
+  const [sourceLanguage, setSourceLanguage] = useState('English');
   const [priority, setPriority] = useState<TaskPriority>('medium');
   const [file, setFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -380,6 +381,7 @@ export const BulkTaskCreator: React.FC = () => {
          // Reset form after successful completion
          setFile(null);
          setBatchName('');
+         setSourceLanguage('English');
          // setLanguage(''); // Keep language/priority maybe?
          if (fileInputRef.current) fileInputRef.current.value = '';
 
@@ -403,6 +405,18 @@ export const BulkTaskCreator: React.FC = () => {
     // Consolidated validation checks
     if (!batchName || !taskType || !language || !file) {
       toast.error('Please fill in Batch Name, Task Type, Language, and select a file.');
+      return;
+    }
+
+    // For translation tasks, ensure both source and target languages are selected
+    if (taskType === 'translation' && (!sourceLanguage || !language)) {
+      toast.error('Please select both source and target languages for translation tasks.');
+      return;
+    }
+
+    // For translation tasks, ensure source and target languages are different
+    if (taskType === 'translation' && sourceLanguage === language) {
+      toast.error('Source and target languages cannot be the same for translation tasks.');
       return;
     }
 
@@ -434,7 +448,7 @@ export const BulkTaskCreator: React.FC = () => {
       }
       console.log(`Successfully parsed ${parsedData.length} rows.`);
 
-      // 2. Map Parsed Data to Task Objects (remains the same)
+      // 2. Map Parsed Data to Task Objects
       const tasksToInsert = parsedData.map((item, index) => {
          // Ensure item is an object
          if (typeof item !== 'object' || item === null) {
@@ -455,7 +469,8 @@ export const BulkTaskCreator: React.FC = () => {
                  return null;
              }
              taskContent.source_text = item.source_text;
-             taskContent.source_language = item.source_language || 'English';
+             taskContent.source_language = item.source_language || sourceLanguage;
+             taskContent.target_language = item.target_language || language;
              taskContent.domain = item.domain || 'general';
          } else if (taskType === 'tts') {
              if (!item.text_to_speak) {
@@ -473,16 +488,16 @@ export const BulkTaskCreator: React.FC = () => {
 
          // Add batch name to content JSON
          taskContent.batch_name = batchName;
-         
-         // For translation tasks, include language info in the content
-         if (taskType === 'translation') {
-             taskContent.source_language = item.source_language || 'English';
-             taskContent.target_language = language;
-         }
+
+         // Determine which language to use for the database field
+         // For translation tasks, use the target language as the primary language field
+         const dbLanguage = taskType === 'translation' 
+             ? (item.target_language || language) 
+             : language;
 
          return {
              type: taskType,
-             language: taskType === 'translation' ? (item.source_language || 'English') : language,
+             language: dbLanguage,
              priority: priority,
              status: 'pending' as const,
              content: taskContent,
@@ -511,10 +526,11 @@ export const BulkTaskCreator: React.FC = () => {
       }
 
       toast.success(`Successfully created ${totalInserted} tasks in batch '${batchName}'.`);
-      // Reset form (remains the same)
+      // Reset form
       setBatchName('');
       setTaskType('');
       setLanguage('');
+      setSourceLanguage('English');
       setPriority('medium');
       setFile(null);
       if (fileInputRef.current) {
@@ -573,6 +589,16 @@ export const BulkTaskCreator: React.FC = () => {
     toast.success(`Downloaded sample ${taskType} template`);
   };
 
+  // Handle change in task type
+  const handleTaskTypeChange = (value: string) => {
+    setTaskType(value as TaskType);
+    // Reset language fields when changing task types
+    setLanguage('');
+    if (value === 'translation') {
+      setSourceLanguage('English');
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -595,8 +621,9 @@ export const BulkTaskCreator: React.FC = () => {
                 {taskType === 'translation' && (
                   <>
                     <p><strong>Required column:</strong> source_text (the text to be translated)</p>
-                    <p><strong>Optional columns:</strong> task_title, task_description, source_language, domain</p>
-                    <p><strong>Example row:</strong> "Hello, how are you?","Greeting translation","Translate this greeting to the target language","English","general"</p>
+                    <p><strong>Optional columns:</strong> task_title, task_description, source_language, target_language, domain</p>
+                    <p><strong>Example row:</strong> "Hello, how are you?","Greeting translation","Translate this greeting to the target language","English","Akan","general"</p>
+                    <p><strong>Note:</strong> If source_language or target_language are not specified in the CSV, the selected values from the form will be used.</p>
                   </>
                 )}
                 {taskType === 'tts' && (
@@ -635,7 +662,7 @@ export const BulkTaskCreator: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
                 <Label htmlFor="bulk-taskType">Task Type</Label>
-                 <Select name="taskType" value={taskType} onValueChange={(value) => setTaskType(value as TaskType)} required disabled={isLoading}>
+                 <Select name="taskType" value={taskType} onValueChange={handleTaskTypeChange} required disabled={isLoading}>
                     <SelectTrigger id="bulk-taskType">
                       <SelectValue placeholder="Select task type" />
                     </SelectTrigger>
@@ -658,14 +685,32 @@ export const BulkTaskCreator: React.FC = () => {
                   </Button>
                 )}
             </div>
+            
+            {/* Conditionally show source language dropdown for translation tasks */}
+            {taskType === 'translation' && (
+              <div>
+                <Label htmlFor="bulk-source-language">Source Language</Label>
+                <Select name="sourceLanguage" value={sourceLanguage} onValueChange={setSourceLanguage} required disabled={isLoading}>
+                  <SelectTrigger id="bulk-source-language">
+                    <SelectValue placeholder="Select source language" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableLanguages.map(lang => <SelectItem key={lang} value={lang}>{lang}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            
             <div>
-                <Label htmlFor="bulk-language">Language</Label>
+                <Label htmlFor="bulk-language">{taskType === 'translation' ? 'Target Language' : 'Language'}</Label>
                  <Select name="language" value={language} onValueChange={setLanguage} required disabled={isLoading}>
                     <SelectTrigger id="bulk-language">
-                      <SelectValue placeholder="Select language" />
+                      <SelectValue placeholder={taskType === 'translation' ? 'Select target language' : 'Select language'} />
                     </SelectTrigger>
                     <SelectContent>
-                       {availableLanguages.filter(l => l !== 'English').map(lang => <SelectItem key={lang} value={lang}>{lang}</SelectItem>)}
+                       {taskType === 'translation' 
+                        ? availableLanguages.filter(l => l !== sourceLanguage).map(lang => <SelectItem key={lang} value={lang}>{lang}</SelectItem>)
+                        : availableLanguages.filter(l => l !== 'English').map(lang => <SelectItem key={lang} value={lang}>{lang}</SelectItem>)}
                     </SelectContent>
                 </Select>
             </div>
@@ -702,7 +747,7 @@ export const BulkTaskCreator: React.FC = () => {
                {file && <span className="text-sm text-muted-foreground truncate max-w-xs">{file.name}</span>}
              </div>
              <p className="text-xs text-muted-foreground mt-1">
-               {taskType === 'translation' && 'CSV/Excel required. Must include column: source_text. Optional: task_title, task_description, source_language.'}
+               {taskType === 'translation' && 'CSV/Excel required. Must include column: source_text. Optional: task_title, task_description, source_language, target_language, domain.'}
                {taskType === 'tts' && 'CSV/Excel required. Must include column: text_to_speak. Optional: task_title, task_description.'}
                {taskType === 'transcription' && 'CSV/Excel required. Must include column: audio_url. Optional: task_title, task_description.'}
                {taskType === 'asr' && 'Upload a ZIP file containing images (.jpg, .jpeg, .png, or .webp)'}

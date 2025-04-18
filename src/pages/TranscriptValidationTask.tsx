@@ -93,6 +93,8 @@ const TranscriptValidationTask: React.FC = () => {
     const fetchValidationTasks = async () => {
       if (!userId) return;
       
+      console.log("TranscriptValidationTask: fetchValidationTasks called", { contributionId });
+      
       setIsLoadingTasks(true);
       setTasks([]);
       setAvailableLanguages([]);
@@ -115,12 +117,15 @@ const TranscriptValidationTask: React.FC = () => {
               tasks (id, language)
             `)
             .eq('id', contributionId)
-            .eq('status', 'pending_transcript_validation') // Ensure it's the correct status
             .maybeSingle(); // Fetch one or null
+          
+          console.log("Single contribution fetch result:", { data, error, status: data?.status });
           
           if (error) {
             fetchError = error;
           } else if (data) {
+            // For debugging: Log status to check if it's really 'pending_transcript_validation'
+            console.log(`Contribution ${contributionId} status: ${data.status}`);
             fetchedContributions = [data]; // Put the single result in an array
           } else {
             // Contribution not found or not pending transcript validation
@@ -143,14 +148,22 @@ const TranscriptValidationTask: React.FC = () => {
             `)
             .eq('status', 'pending_transcript_validation');
           
+          console.log("All contributions fetch result:", { count: data?.length || 0, error });
+          
           if (error) {
             fetchError = error;
           } else if (data) {
             fetchedContributions = data;
-            // Extract languages only when fetching all
-             const languages = Array.from(
+            // Extract languages properly handling tasks as array or object
+            const languages = Array.from(
                 new Set(
-                    data.map(c => c.tasks?.language).filter((l): l is string => !!l?.trim())
+                    data.map(c => {
+                      if (!c.tasks) return null;
+                      if (Array.isArray(c.tasks) && c.tasks.length > 0) {
+                        return c.tasks[0]?.language;
+                      }
+                      return (c.tasks as any)?.language;
+                    }).filter((l): l is string => !!l?.trim())
                 )
             );
             setAvailableLanguages(languages);
@@ -162,16 +175,55 @@ const TranscriptValidationTask: React.FC = () => {
         
         // --- Map Fetched Data (Common Logic) ---
         if (fetchedContributions && fetchedContributions.length > 0) {
+          // Log raw data for debugging
+          console.log("Raw data structure sample:", JSON.stringify(fetchedContributions[0], null, 2));
+
           const mappedTasks: TranscriptValidationTask[] = fetchedContributions
-            .filter(c => c.storage_url && c.submitted_data && typeof c.submitted_data === 'object' && 'transcription' in c.submitted_data && c.tasks)
+            .filter(c => {
+              // More detailed logging to identify exact filter issue
+              const hasStorageUrl = !!c.storage_url;
+              const hasSubmittedData = !!c.submitted_data;
+              const isSubmittedDataObject = typeof c.submitted_data === 'object';
+              const hasTranscription = hasSubmittedData && isSubmittedDataObject && 'transcription' in c.submitted_data;
+              const hasTasks = !!c.tasks;
+              
+              console.log(`Contribution ${c.id} filter check:`, {
+                hasStorageUrl,
+                hasSubmittedData,
+                isSubmittedDataObject,
+                hasTranscription,
+                hasTasks,
+                tasksType: hasTasks ? Array.isArray(c.tasks) ? 'array' : 'object' : 'missing'
+              });
+              
+              // Modified to allow tasks without storage_url but with valid transcription
+              return hasSubmittedData && isSubmittedDataObject && hasTranscription && hasTasks;
+            })
             .map(c => {
               const submittedData = c.submitted_data as { transcription?: string };
-              const taskData = c.tasks as { id: number, language: string }; // Type assertion
+              
+              // Handle tasks properly whether it's an array or single object
+              let taskLanguage = 'Unknown';
+              let taskId = c.task_id;
+              
+              if (c.tasks) {
+                if (Array.isArray(c.tasks) && c.tasks.length > 0) {
+                  // If tasks is an array, use the first item
+                  taskLanguage = c.tasks[0]?.language || 'Unknown';
+                  taskId = c.tasks[0]?.id || c.task_id;
+                } else {
+                  // If tasks is a single object
+                  const taskData = c.tasks as { id: number, language: string };
+                  taskLanguage = taskData?.language || 'Unknown';
+                  taskId = taskData?.id || c.task_id;
+                }
+              }
+              
               return {
                 id: c.id,
-                audioUrl: c.storage_url as string,
-                language: taskData?.language || 'Unknown',
-                originalTaskId: c.task_id,
+                audioUrl: c.storage_url as string || '', // Provide empty string fallback for null storage_url
+                language: taskLanguage,
+                originalTaskId: taskId,
                 transcription: submittedData.transcription || '',
                 transcriberId: c.user_id,
                 contributionId: c.id,
@@ -179,7 +231,21 @@ const TranscriptValidationTask: React.FC = () => {
               };
             });
             
-          console.log(`Mapped ${mappedTasks.length} validation tasks.`);
+          console.log(`Mapped ${mappedTasks.length} validation tasks from ${fetchedContributions.length} fetched contributions`);
+          
+          // Debug what might be filtered out
+          if (mappedTasks.length < fetchedContributions.length) {
+            console.log("Some contributions were filtered out. Details:", fetchedContributions.map(c => ({
+              id: c.id,
+              has_storage_url: !!c.storage_url,
+              has_submitted_data: !!c.submitted_data,
+              is_submitted_data_object: typeof c.submitted_data === 'object',
+              has_transcription: !!c.submitted_data && typeof c.submitted_data === 'object' && 'transcription' in c.submitted_data,
+              has_tasks: !!c.tasks,
+              tasks_structure: c.tasks ? JSON.stringify(c.tasks).substring(0, 100) + '...' : 'null'
+            })));
+          }
+          
           setTasks(mappedTasks);
         } else {
            if (!contributionId) {
@@ -206,8 +272,7 @@ const TranscriptValidationTask: React.FC = () => {
     if (userId) {
       fetchValidationTasks();
     }
-    // Dependency array includes contributionId to refetch if the ID changes
-  }, [userId, contributionId, toast]); 
+  }, [userId, contributionId, toast]);
   
   // Filter tasks by language
   const filteredTasks = useMemo(() => {
@@ -287,10 +352,16 @@ const TranscriptValidationTask: React.FC = () => {
   }, [audioRef, isSeeking]);
 
   const getCurrentTask = (): TranscriptValidationTask | null => {
-    if (isLoadingTasks || filteredTasks.length === 0 || currentTaskIndex >= filteredTasks.length) {
+    console.log("getCurrentTask called with:", { 
+      currentTaskIndex, 
+      tasksLength: tasks.length,
+      tasks: tasks.length > 0 ? tasks.map(t => ({ id: t.id, transcription: t.transcription?.substring(0, 20) + '...' })) : []
+    });
+    
+    if (isLoadingTasks || tasks.length === 0 || currentTaskIndex >= tasks.length) {
       return null;
     }
-    return filteredTasks[currentTaskIndex];
+    return tasks[currentTaskIndex];
   };
   
   const currentTask = getCurrentTask();
@@ -302,7 +373,7 @@ const TranscriptValidationTask: React.FC = () => {
   // Load audio when task changes or audioUrl changes
   useEffect(() => {
     const currentTaskAudio = getCurrentTask();
-    if (!currentTaskAudio?.audioUrl) {
+    if (!currentTaskAudio?.audioUrl || currentTaskAudio.audioUrl.trim() === '') {
       resetAudioState(); // Reset if no URL
       return;
     }
@@ -580,6 +651,20 @@ const TranscriptValidationTask: React.FC = () => {
          throw new Error(`Failed to save validation record: ${validationError.message}`);
       }
       
+      // 3. Update the task status to completed
+      console.log(`Updating task status to completed for task ID: ${currentTask.originalTaskId}`);
+      const { error: taskUpdateError } = await supabase
+        .from('tasks')
+        .update({ status: 'completed' })
+        .eq('id', currentTask.originalTaskId);
+      
+      if (taskUpdateError) {
+        console.warn(`Could not update task status for task ${currentTask.originalTaskId}:`, taskUpdateError);
+        // Continue without failing the whole operation
+      } else {
+        console.log(`Successfully marked task ${currentTask.originalTaskId} as completed`);
+      }
+      
       // Update local state
       setValidationResults(prev => ({
         ...prev,
@@ -753,61 +838,75 @@ const TranscriptValidationTask: React.FC = () => {
   };
 
   // --- Render Audio Player Function Added ---
-  const renderAudioPlayer = () => (
-    <div className="p-4 bg-gray-50 rounded-md border space-y-3">
-      <audio ref={audioRef} className="hidden" /> 
-      {/* Controls Row */} 
-      <div className="flex items-center gap-2 flex-wrap">
-        <Button 
-          variant="outline" 
-          size="icon" 
-          onClick={togglePlayPause} 
-          aria-label={isPlaying ? "Pause" : "Play"}
+  const renderAudioPlayer = () => {
+    // Check if we have a valid audio URL
+    const hasAudio = currentTask?.audioUrl && currentTask.audioUrl.trim() !== '';
+    
+    if (!hasAudio) {
+      return (
+        <div className="p-4 bg-gray-50 rounded-md border text-center">
+          <p className="text-muted-foreground mb-2">No audio available for this task.</p>
+          <p className="text-sm">This is a text-only transcription that needs validation.</p>
+        </div>
+      );
+    }
+    
+    return (
+      <div className="p-4 bg-gray-50 rounded-md border space-y-3">
+        <audio ref={audioRef} className="hidden" /> 
+        {/* Controls Row */} 
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button 
+            variant="outline" 
+            size="icon" 
+            onClick={togglePlayPause} 
+            aria-label={isPlaying ? "Pause" : "Play"}
+            disabled={audioError || !duration}
+          >
+            {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+          </Button>
+          <Button variant="outline" size="icon" onClick={() => seekRelative(-5)} aria-label="Rewind 5 seconds" disabled={audioError || !duration}>
+            <Rewind className="h-5 w-5" />
+          </Button>
+          <Button variant="outline" size="icon" onClick={() => seekRelative(5)} aria-label="Forward 5 seconds" disabled={audioError || !duration}>
+            <FastForward className="h-5 w-5" />
+          </Button>
+          <div className="text-sm font-mono text-muted-foreground min-w-[100px] text-center">
+            {formatTime(currentTime)} / {formatTime(duration)}
+          </div>
+          <div className="flex items-center gap-2 ml-auto">
+            <Label htmlFor="playbackRateValidator" className="text-sm whitespace-nowrap">Speed:</Label>
+            <Select value={playbackRate.toString()} onValueChange={handleRateChangeSelect} disabled={audioError || !duration}>
+              <SelectTrigger id="playbackRateValidator" className="w-[80px] h-9">
+                <SelectValue placeholder="Speed" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="0.5">0.5x</SelectItem>
+                <SelectItem value="0.75">0.75x</SelectItem>
+                <SelectItem value="1.0">1.0x</SelectItem>
+                <SelectItem value="1.25">1.25x</SelectItem>
+                <SelectItem value="1.5">1.5x</SelectItem>
+                <SelectItem value="2.0">2.0x</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        {/* Progress Slider */} 
+        <Slider
+          value={[currentTime]}
+          max={duration || 1} // Ensure max is at least 1 to prevent errors
+          step={0.1}
           disabled={audioError || !duration}
-        >
-          {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
-        </Button>
-        <Button variant="outline" size="icon" onClick={() => seekRelative(-5)} aria-label="Rewind 5 seconds" disabled={audioError || !duration}>
-          <Rewind className="h-5 w-5" />
-        </Button>
-        <Button variant="outline" size="icon" onClick={() => seekRelative(5)} aria-label="Forward 5 seconds" disabled={audioError || !duration}>
-          <FastForward className="h-5 w-5" />
-        </Button>
-        <div className="text-sm font-mono text-muted-foreground min-w-[100px] text-center">
-          {formatTime(currentTime)} / {formatTime(duration)}
-        </div>
-        <div className="flex items-center gap-2 ml-auto">
-          <Label htmlFor="playbackRateValidator" className="text-sm whitespace-nowrap">Speed:</Label>
-          <Select value={playbackRate.toString()} onValueChange={handleRateChangeSelect} disabled={audioError || !duration}>
-            <SelectTrigger id="playbackRateValidator" className="w-[80px] h-9">
-              <SelectValue placeholder="Speed" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="0.5">0.5x</SelectItem>
-              <SelectItem value="0.75">0.75x</SelectItem>
-              <SelectItem value="1.0">1.0x</SelectItem>
-              <SelectItem value="1.25">1.25x</SelectItem>
-              <SelectItem value="1.5">1.5x</SelectItem>
-              <SelectItem value="2.0">2.0x</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+          onValueChange={handleSeekSlider}
+          onValueCommit={handleSeekCommit}
+          onPointerDown={() => setIsSeeking(true)} 
+          onPointerUp={() => setIsSeeking(false)} 
+          className="w-full cursor-pointer pt-1"
+        />
+        {audioError && <p className="text-xs text-red-600">Error loading audio.</p>}
       </div>
-      {/* Progress Slider */} 
-      <Slider
-        value={[currentTime]}
-        max={duration || 1} // Ensure max is at least 1 to prevent errors
-        step={0.1}
-        disabled={audioError || !duration}
-        onValueChange={handleSeekSlider}
-        onValueCommit={handleSeekCommit}
-        onPointerDown={() => setIsSeeking(true)} 
-        onPointerUp={() => setIsSeeking(false)} 
-        className="w-full cursor-pointer pt-1"
-      />
-      {audioError && <p className="text-xs text-red-600">Error loading audio.</p>}
-    </div>
-  );
+    );
+  };
   // --- End Render Audio Player Function ---
   
   const currentSpecialChars = currentTask ? specialCharsMap[currentTask.language.toLowerCase()] || [] : [];

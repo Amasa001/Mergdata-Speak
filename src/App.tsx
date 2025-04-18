@@ -29,6 +29,12 @@ import AdminDashboard from "./pages/AdminDashboard";
 import TranscriptionTask from "./pages/TranscriptionTask";
 import TranscriptValidationTask from "./pages/TranscriptValidationTask";
 
+// Import project-related pages
+import ProjectList from "./pages/ProjectList";
+import { ProjectCreate } from "./pages/ProjectCreate";
+import ProjectDetail from "./pages/ProjectDetail";
+import ProjectTaskUpload from "./pages/ProjectTaskUpload";
+
 // Import dashboard components
 import { TTSDashboard } from "@/components/dashboard/roles/TTSDashboard";
 
@@ -80,6 +86,12 @@ const App = () => (
             <Route path="/admin/create-task" element={<AdminTaskCreator />} />
             <Route path="/leaderboard" element={<Leaderboard />} />
             <Route path="/admin/dashboard" element={<AdminDashboard />} />
+            
+            {/* Project Routes */}
+            <Route path="/projects" element={<ProjectList />} />
+            <Route path="/projects/new" element={<ProjectCreate />} />
+            <Route path="/projects/:projectId" element={<ProjectDetail />} />
+            <Route path="/projects/:projectId/upload" element={<ProjectTaskUpload />} />
           </Route>
 
           {/* Catch-all route */}

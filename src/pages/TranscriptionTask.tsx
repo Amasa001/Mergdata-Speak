@@ -20,8 +20,9 @@ interface TranscriptionTask {
   audioUrl: string;
   language: string;
   originalTaskId: number;
-  contributionId: number;
+  contributionId: number | null;
   status?: string;
+  title?: string;
 }
 
 // Define the structure for contribution data
@@ -38,7 +39,14 @@ interface ContributionData {
   tasks: {
     id: number;
     language: string;
-  } | null;
+    content?: Record<string, any>;
+    project_id?: number;
+  } | Array<{
+    id: number;
+    language: string;
+    content?: Record<string, any>;
+    project_id?: number;
+  }> | null;
 }
 
 // Helper to format time
@@ -111,7 +119,7 @@ const TranscriptionTask: React.FC = () => {
       setCurrentTranscription('');
       
       try {
-        // If we have a specific contribution_id, fetch just that one
+        // Check if we have a specific contribution_id to load
         if (contributionId) {
           console.log("Fetching specific contribution:", contributionId);
           const { data: contribution, error: contribError } = await supabase
@@ -164,17 +172,31 @@ const TranscriptionTask: React.FC = () => {
               }
             }
             
+            // Extract task information, handling both array and object formats
+            const taskData = typedContribution.tasks;
+            let taskLanguage = 'Unknown';
+            
+            if (taskData) {
+              // If taskData is an array, use the first item
+              if (Array.isArray(taskData)) {
+                taskLanguage = taskData[0]?.language || 'Unknown';
+              } else {
+                // Otherwise use it directly
+                taskLanguage = taskData.language || 'Unknown';
+              }
+            }
+            
             const task: TranscriptionTask = {
               id: typedContribution.id,
               audioUrl: typedContribution.storage_url as string,
-              language: typedContribution.tasks?.language || 'Unknown',
+              language: taskLanguage,
               originalTaskId: typedContribution.task_id,
               contributionId: typedContribution.id,
               status: typedContribution.status
             };
             
             setTasks([task]);
-            setAvailableLanguages([typedContribution.tasks?.language || 'Unknown']);
+            setAvailableLanguages([taskLanguage]);
           } else {
             toast({
               title: 'Task Not Found',
@@ -184,60 +206,131 @@ const TranscriptionTask: React.FC = () => {
             navigate('/dashboard');
           }
         } else {
-          // Original logic for fetching all available tasks
-          console.log("Fetching all available transcription tasks");
-          const { data: readyContributions, error: contribError } = await supabase
-            .from('contributions')
-            .select(`
-              id, 
-              storage_url,
-              task_id,
-              status,
-              user_id,
-              submitted_data,
-              tasks (id, language)
-            `)
-            .or(`status.eq.ready_for_transcription,and(status.eq.rejected,user_id.eq.${userId}),and(status.eq.rejected_transcript,user_id.eq.${userId})`);
-            
-          if (contribError) throw contribError;
+          // Get the projectId parameter if it exists
+          const projectIdParam = searchParams.get('project_id');
+          const projectId = projectIdParam ? parseInt(projectIdParam, 10) : null;
           
-          if (readyContributions && readyContributions.length > 0) {
-            const languages = Array.from(
-              new Set(
-                readyContributions
-                  .map(c => c.tasks?.language)
-                  .filter((l): l is string => l !== null && l !== undefined && l.trim() !== '')
-              )
-            );
-            setAvailableLanguages(languages);
+          if (projectId) {
+            console.log(`Loading transcription tasks for project: ${projectId}`);
             
-            const mappedTasks: TranscriptionTask[] = readyContributions
-              .filter(c => c.storage_url && c.tasks)
-              .map(c => ({
-                id: c.id,
-                audioUrl: c.storage_url as string,
-                language: c.tasks?.language || 'Unknown',
-                originalTaskId: c.task_id,
-                contributionId: c.id,
-                status: c.status
-              }));
+            // Fetch tasks directly from the tasks table for this project
+            const { data: projectTasks, error: tasksError } = await supabase
+              .from('tasks')
+              .select('*')
+              .eq('project_id', projectId)
+              .eq('type', 'transcription')
+              .not('status', 'eq', 'completed') // Exclude completed tasks
+              .order('created_at', { ascending: false });
               
-            setTasks(mappedTasks);
+            if (tasksError) throw tasksError;
             
-            // If there's a rejected task and we're not looking at a specific task,
-            // preload the first rejected task's data
-            const rejectedTask = readyContributions.find(c => 
-              (c.status === 'rejected' || c.status === 'rejected_transcript') && c.user_id === userId
-            );
-            if (rejectedTask && rejectedTask.submitted_data) {
-              const submittedData = rejectedTask.submitted_data as Record<string, any>;
+            if (projectTasks && projectTasks.length > 0) {
+              console.log(`Found ${projectTasks.length} transcription tasks for project ${projectId}`);
               
-              if (submittedData['transcription']) {
-                setCurrentTranscription(submittedData['transcription']);
+              // Get unique languages
+              const languages = Array.from(
+                new Set(
+                  projectTasks
+                    .map(t => t.language)
+                    .filter((l): l is string => l !== null && l !== undefined && l.trim() !== '')
+                )
+              );
+              setAvailableLanguages(languages);
+              
+              // Map to TranscriptionTask structure
+              const mappedTasks: TranscriptionTask[] = projectTasks.map(task => {
+                // Extract audio URL from task content
+                const content = task.content as Record<string, any>;
+                
+                return {
+                  id: task.id,
+                  audioUrl: content.audio_url || '',
+                  language: task.language || 'Unknown',
+                  originalTaskId: task.id,
+                  contributionId: null, // No contribution yet
+                  status: task.status,
+                  title: content.task_title || `Transcription Task #${task.id}`
+                };
+              }).filter(t => t.audioUrl); // Filter out tasks without audio URLs
+              
+              setTasks(mappedTasks);
+              
+              if (mappedTasks.length === 0) {
+                toast({
+                  title: 'No Tasks Available',
+                  description: 'No transcription tasks with audio files were found for this project.',
+                  variant: 'destructive'
+                });
               }
+            } else {
+              toast({
+                title: 'No Tasks Found',
+                description: 'No transcription tasks were found for this project.',
+                variant: 'destructive'
+              });
+            }
+          } else {
+            // Original logic for fetching contributions ready for transcription
+            let query = supabase
+              .from('contributions')
+              .select('id, task_id, storage_url, status, user_id, submitted_data, tasks:task_id(id, language, content, project_id)')
+              .or(`status.eq.ready_for_transcription,and(status.eq.rejected,user_id.eq.${userId}),and(status.eq.rejected_transcript,user_id.eq.${userId})`);
               
-              if (submittedData['rejection_reason']) {
-                setRejectionReason(submittedData['rejection_reason']);
+            const { data: readyContributions, error: contribError } = await query;
+            
+            if (contribError) throw contribError;
+            
+            if (readyContributions && readyContributions.length > 0) {
+              const languages = Array.from(
+                new Set(
+                  readyContributions
+                    .map(c => {
+                      // Handle tasks as either object or array
+                      const taskData = c.tasks;
+                      // If tasks is an array, get first item, otherwise use as is
+                      const task = Array.isArray(taskData) ? taskData[0] : taskData;
+                      return task?.language;
+                    })
+                    .filter((l): l is string => l !== null && l !== undefined && l.trim() !== '')
+                )
+              );
+              setAvailableLanguages(languages);
+              
+              const mappedTasks: TranscriptionTask[] = readyContributions
+                .filter(c => c.storage_url && c.tasks)
+                .map(c => {
+                  // Handle tasks as either object or array
+                  const taskData = c.tasks;
+                  // If tasks is an array, get first item, otherwise use as is
+                  const task = Array.isArray(taskData) ? taskData[0] : taskData;
+                  
+                  return {
+                    id: c.id,
+                    audioUrl: c.storage_url as string,
+                    language: task?.language || 'Unknown',
+                    originalTaskId: c.task_id,
+                    contributionId: c.id,
+                    status: c.status
+                  };
+                });
+                
+              setTasks(mappedTasks);
+              
+              // If there's a rejected task and we're not looking at a specific task,
+              // preload the first rejected task's data
+              const rejectedTask = readyContributions.find(c => 
+                (c.status === 'rejected' || c.status === 'rejected_transcript') && c.user_id === userId
+              );
+              if (rejectedTask && rejectedTask.submitted_data) {
+                const submittedData = rejectedTask.submitted_data as Record<string, any>;
+                
+                if (submittedData['transcription']) {
+                  setCurrentTranscription(submittedData['transcription']);
+                }
+                
+                if (submittedData['rejection_reason']) {
+                  setRejectionReason(submittedData['rejection_reason']);
+                }
               }
             }
           }
@@ -258,7 +351,7 @@ const TranscriptionTask: React.FC = () => {
     if (userId) {
       fetchTranscriptionTasks();
     }
-  }, [userId, contributionId, navigate, toast]);
+  }, [userId, contributionId, navigate, toast, searchParams]);
   
   // Filter tasks by language
   const filteredTasks = selectedLanguage === 'all'
@@ -383,34 +476,81 @@ const TranscriptionTask: React.FC = () => {
     
     const submissionPromises = Object.values(transcriptionsToSubmit).map(async ({ text, taskId }) => {
       try {
-        // 1. Update the contribution with transcription and change status
-        console.log(`Updating contribution ${taskId} with status 'pending_transcript_validation'`);
+        const currentTask = tasks.find(t => t.id === taskId);
+        if (!currentTask) throw new Error(`Task ${taskId} not found in current task list`);
         
-        // Preserve rejection reason if it exists when resubmitting
-        let submittedData: any = { transcription: text };
-        
-        // If this is a resubmission after rejection, preserve the rejection history
-        if (rejectionReason) {
-          submittedData = { 
-            ...submittedData,
-            rejection_history: [{ 
-              reason: rejectionReason, 
-              timestamp: new Date().toISOString() 
-            }]
-          };
-        }
-        
-        const { error: updateError } = await supabase
-          .from('contributions')
-          .update({
-            submitted_data: submittedData,
-            status: 'pending_transcript_validation',
-          })
-          .eq('id', taskId);
+        // Handle new submissions (no existing contribution)
+        if (!currentTask.contributionId) {
+          console.log(`Creating new contribution for task ${taskId}`);
           
-        if (updateError) throw updateError;
-        console.log(`Successfully updated contribution ${taskId}`);
-        return { taskId, success: true };
+          // 1. Create a new contribution record
+          const { data: newContribution, error: insertError } = await supabase
+            .from('contributions')
+            .insert({
+              task_id: currentTask.originalTaskId,
+              user_id: userId,
+              submitted_data: { 
+                transcription: text,
+                timestamp: new Date().toISOString()
+              },
+              storage_url: currentTask.audioUrl, // Copy the audio URL from the task
+              status: 'pending_transcript_validation',
+            })
+            .select('id')
+            .single();
+            
+          if (insertError) throw insertError;
+          
+          if (!newContribution) {
+            throw new Error('Failed to create contribution record');
+          }
+          
+          console.log(`Successfully created contribution ${newContribution.id} for task ${taskId}`);
+          
+          // 2. Update the task status to 'assigned'
+          const { error: updateError } = await supabase
+            .from('tasks')
+            .update({ status: 'assigned' })
+            .eq('id', currentTask.originalTaskId);
+            
+          if (updateError) {
+            console.warn(`Could not update task status: ${updateError.message}`);
+          }
+          
+          return { taskId, success: true, newContributionId: newContribution.id };
+        }
+        // Handle existing contributions
+        else if (currentTask && currentTask.contributionId) {
+          console.log(`Updating contribution ${currentTask.contributionId}`);
+          
+          // Preserve rejection reason if it exists when resubmitting
+          let submittedData: any = { transcription: text };
+          
+          // If this is a resubmission after rejection, preserve the rejection history
+          if (rejectionReason) {
+            submittedData = { 
+              ...submittedData,
+              rejection_history: [{ 
+                reason: rejectionReason, 
+                timestamp: new Date().toISOString() 
+              }]
+            };
+          }
+          
+          const { error: updateError } = await supabase
+            .from('contributions')
+            .update({
+              submitted_data: submittedData,
+              status: 'pending_transcript_validation',
+            })
+            .eq('id', currentTask.contributionId);
+            
+          if (updateError) throw updateError;
+          console.log(`Successfully updated contribution ${currentTask.contributionId}`);
+          return { taskId, success: true };
+        } else {
+          throw new Error('Task not found');
+        }
       } catch (error) {
         console.error(`Error submitting transcription for task ${taskId}:`, error);
         return { taskId, success: false, error };
@@ -779,156 +919,168 @@ const TranscriptionTask: React.FC = () => {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      {/* Header */} 
-      <div className="flex items-center mb-6">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <h1 className="text-2xl font-semibold ml-2">Transcription Task</h1>
-        <div className="ml-auto">
-          <LanguageFilter 
-            availableLanguages={availableLanguages}
-            selectedLanguage={selectedLanguage}
-            onLanguageChange={handleLanguageChange}
-          />
-        </div>
-      </div>
-      
-      {/* Loading State */} 
-      {isLoadingTasks ? (
-        <div className="text-center py-10">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-afri-orange" />
-          <p className="text-muted-foreground">Loading transcription tasks...</p>
-        </div>
-      ) : /* No Tasks Available State */ 
-      filteredTasks.length === 0 ? (
-        <Card className="text-center py-10 border-dashed">
-          <CardHeader>
-            <FileText className="h-12 w-12 mx-auto text-gray-300 mb-4" />
-            <CardTitle className="text-xl font-medium text-gray-700">No Transcription Tasks</CardTitle>
-            <CardDescription>
-              There are currently no tasks ready for transcription{selectedLanguage !== 'all' ? ` in ${selectedLanguage}` : ''}. Check back later!
-            </CardDescription>
-          </CardHeader>
-          {tasks.length > 0 && (
-             <CardFooter className="justify-center">
-                 <Button variant="outline" onClick={() => handleLanguageChange('all')}>Show All Languages</Button>
-             </CardFooter>
-          )}
-        </Card>
-      ) : /* Task Display Card */ 
-      currentTask ? (
-        <Card className="overflow-hidden shadow-md">
-          <CardHeader className="bg-gray-50/50 border-b">
-            <div className="flex justify-between items-start">
-              <div>
-                <CardTitle className="text-lg font-medium">
-                  {currentTask.status === 'rejected' ? 'Revise Transcription' : 'Transcribe Audio'} ({currentTaskIndex + 1}/{filteredTasks.length})
-                </CardTitle>
-                <CardDescription>Listen carefully and type what you hear in {currentTask.language}.</CardDescription>
-                <Badge variant="secondary" className="mt-2">Language: {currentTask.language}</Badge>
-              </div>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={handleSkipTask} 
-                disabled={isSubmitting}
-                className="flex-shrink-0"
-              >
-                Skip Task <SkipForward className="h-4 w-4 ml-1" />
+    <div className="container mx-auto py-8">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex justify-between items-center">
+            <div className="flex items-center">
+              <Button variant="ghost" onClick={() => navigate('/dashboard')} className="mr-2">
+                <ArrowLeft className="h-4 w-4" />
               </Button>
+              <span>Transcription Task</span>
             </div>
-            <Progress 
-              value={((currentTaskIndex + 1) / filteredTasks.length) * 100} 
-              className="mt-4 h-2" 
-            />
-          </CardHeader>
-          
-          {/* Main Content Area - Redesigned */} 
-          <CardContent className="grid md:grid-cols-2 gap-6 p-6">
-            {/* Left Column: Audio Player */} 
-            <div className="space-y-3">
-              <Label className="font-medium text-base">Audio Recording</Label>
-              {renderAudioPlayer()}
-              <p className="text-xs text-muted-foreground">
-                  Use the controls to play, pause, rewind, fast-forward, and change playback speed.
-              </p>
-            </div>
-            
-            {/* Right Column: Transcription Input */} 
-            <div className="space-y-3 flex flex-col">
-              <Label htmlFor="transcription-input" className="font-medium text-base">Your Transcription</Label>
-              
-              {/* Show rejection notice if applicable */}
-              {renderRejectionNotice()}
-              
-              <Textarea 
-                ref={textareaRef}
-                id="transcription-input"
-                placeholder={`Type the ${currentTask.language} transcription here...`}
-                value={currentTranscription}
-                onChange={handleTranscriptionChange}
-                rows={10} 
-                className="flex-grow resize-none border-gray-300 focus:border-afri-blue focus:ring-afri-blue text-base" 
-                disabled={isSubmitting || isCurrentTaskSaved}
-              />
-              
-              {/* Special Character Buttons */} 
-              {currentSpecialChars.length > 0 && (
-                <div className="pt-2 flex flex-wrap gap-1">
-                  <span className="text-xs text-gray-500 mr-2 py-1">Insert:</span>
-                  {currentSpecialChars.map(char => (
-                      <Button 
-                        key={char} 
-                        variant="outline"
-                        size="sm"
-                        className="font-mono px-2 py-0.5 h-auto text-sm" 
-                        onClick={() => insertSpecialChar(char)}
-                        disabled={isSubmitting || isCurrentTaskSaved}
-                      >
-                        {char}
-                      </Button>
-                  ))}
-                </div>
+            <div className="flex items-center">
+              {availableLanguages.length > 1 && (
+                <LanguageFilter
+                  selectedLanguage={selectedLanguage}
+                  onLanguageChange={handleLanguageChange}
+                  availableLanguages={availableLanguages}
+                />
               )}
-              
-              <div className="flex justify-end items-center mt-2">
-                {isCurrentTaskSaved ? (
-                  <div className="text-sm text-green-600 flex items-center font-medium">
-                    <CheckCircle className="h-4 w-4 mr-1" /> Saved
-                  </div>
-                ) : (
-                  <Button 
-                    variant="secondary" 
-                    size="sm" 
-                    onClick={handleSaveTranscription} 
-                    disabled={!currentTranscription.trim() || isSubmitting}
-                  >
-                    <Save className="h-4 w-4 mr-1" /> Save Progress
-                  </Button>
-                )}
-              </div>
             </div>
-          </CardContent>
-          
-          {/* Footer Actions */} 
-          <CardFooter className="flex justify-end border-t bg-gray-50/50 py-4 px-6">
-            <Button 
-              size="lg"
-              onClick={() => handleNextTask()} 
-              disabled={isSubmitting || (!isCurrentTaskSaved && !currentTranscription.trim() && !wasTaskSkipped)} 
-              className="min-w-[120px]"
-            >
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {isLastTask ? 
-                (Object.keys(transcriptions).length > 0 || currentTranscription.trim() ? 
-                  'Submit Batch' : 'Finish Session') : // Changed Finish label
-                'Next Task'}
-            </Button>
-          </CardFooter>
-        </Card>
-      ) : null /* Should not happen if loading/no tasks handled */}
+          </CardTitle>
+          {getCurrentTask() && getCurrentTask().title && (
+            <CardDescription className="text-lg font-medium mt-2">
+              {getCurrentTask().title}
+            </CardDescription>
+          )}
+        </CardHeader>
+        
+        {/* Loading State */} 
+        {isLoadingTasks ? (
+          <div className="text-center py-10">
+            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-afri-orange" />
+            <p className="text-muted-foreground">Loading transcription tasks...</p>
+          </div>
+        ) : /* No Tasks Available State */ 
+        filteredTasks.length === 0 ? (
+          <Card className="text-center py-10 border-dashed">
+            <CardHeader>
+              <FileText className="h-12 w-12 mx-auto text-gray-300 mb-4" />
+              <CardTitle className="text-xl font-medium text-gray-700">No Transcription Tasks</CardTitle>
+              <CardDescription>
+                There are currently no tasks ready for transcription{selectedLanguage !== 'all' ? ` in ${selectedLanguage}` : ''}. Check back later!
+              </CardDescription>
+            </CardHeader>
+            {tasks.length > 0 && (
+               <CardFooter className="justify-center">
+                   <Button variant="outline" onClick={() => handleLanguageChange('all')}>Show All Languages</Button>
+               </CardFooter>
+            )}
+          </Card>
+        ) : /* Task Display Card */ 
+        currentTask ? (
+          <Card className="overflow-hidden shadow-md">
+            <CardHeader className="bg-gray-50/50 border-b">
+              <div className="flex justify-between items-start">
+                <div>
+                  <CardTitle className="text-lg font-medium">
+                    Transcribe Audio ({currentTaskIndex + 1}/{filteredTasks.length})
+                  </CardTitle>
+                  <CardDescription>Listen carefully and type what you hear in {currentTask.language}.</CardDescription>
+                  <Badge variant="secondary" className="mt-2">Language: {currentTask.language}</Badge>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleSkipTask} 
+                  disabled={isSubmitting}
+                  className="flex-shrink-0"
+                >
+                  Skip Task <SkipForward className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
+              <Progress 
+                value={((currentTaskIndex + 1) / filteredTasks.length) * 100} 
+                className="mt-4 h-2" 
+              />
+            </CardHeader>
+            
+            {/* Main Content Area - Redesigned */} 
+            <CardContent className="grid md:grid-cols-2 gap-6 p-6">
+              {/* Left Column: Audio Player */} 
+              <div className="space-y-3">
+                <Label className="font-medium text-base">Audio Recording</Label>
+                {renderAudioPlayer()}
+                <p className="text-xs text-muted-foreground">
+                    Use the controls to play, pause, rewind, fast-forward, and change playback speed.
+                </p>
+              </div>
+              
+              {/* Right Column: Transcription Input */} 
+              <div className="space-y-3 flex flex-col">
+                <Label htmlFor="transcription-input" className="font-medium text-base">Your Transcription</Label>
+                
+                {/* Show rejection notice if applicable */}
+                {renderRejectionNotice()}
+                
+                <Textarea 
+                  ref={textareaRef}
+                  id="transcription-input"
+                  placeholder={`Type the ${currentTask.language} transcription here...`}
+                  value={currentTranscription}
+                  onChange={handleTranscriptionChange}
+                  rows={10} 
+                  className="flex-grow resize-none border-gray-300 focus:border-afri-blue focus:ring-afri-blue text-base" 
+                  disabled={isSubmitting || isCurrentTaskSaved}
+                />
+                
+                {/* Special Character Buttons */} 
+                {currentSpecialChars.length > 0 && (
+                  <div className="pt-2 flex flex-wrap gap-1">
+                    <span className="text-xs text-gray-500 mr-2 py-1">Insert:</span>
+                    {currentSpecialChars.map(char => (
+                        <Button 
+                          key={char} 
+                          variant="outline"
+                          size="sm"
+                          className="font-mono px-2 py-0.5 h-auto text-sm" 
+                          onClick={() => insertSpecialChar(char)}
+                          disabled={isSubmitting || isCurrentTaskSaved}
+                        >
+                          {char}
+                        </Button>
+                    ))}
+                  </div>
+                )}
+                
+                <div className="flex justify-end items-center mt-2">
+                  {isCurrentTaskSaved ? (
+                    <div className="text-sm text-green-600 flex items-center font-medium">
+                      <CheckCircle className="h-4 w-4 mr-1" /> Saved
+                    </div>
+                  ) : (
+                    <Button 
+                      variant="secondary" 
+                      size="sm" 
+                      onClick={handleSaveTranscription} 
+                      disabled={!currentTranscription.trim() || isSubmitting}
+                    >
+                      <Save className="h-4 w-4 mr-1" /> Save Progress
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+            
+            {/* Footer Actions */} 
+            <CardFooter className="flex justify-end border-t bg-gray-50/50 py-4 px-6">
+              <Button 
+                size="lg"
+                onClick={() => handleNextTask()} 
+                disabled={isSubmitting || (!isCurrentTaskSaved && !currentTranscription.trim() && !wasTaskSkipped)} 
+                className="min-w-[120px]"
+              >
+                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {isLastTask ? 
+                  (Object.keys(transcriptions).length > 0 || currentTranscription.trim() ? 
+                    'Submit Batch' : 'Finish Session') : // Changed Finish label
+                  'Next Task'}
+              </Button>
+            </CardFooter>
+          </Card>
+        ) : null /* Should not happen if loading/no tasks handled */}
+      </Card>
     </div>
   );
 };

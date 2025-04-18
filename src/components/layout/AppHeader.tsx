@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { LayoutDashboard, User, LogOut, Trophy, Settings } from 'lucide-react';
+import { LayoutDashboard, User, LogOut, Trophy, Settings, FolderKanban } from 'lucide-react';
 
 /**
  * Header component for authenticated sections of the app.
@@ -71,6 +71,11 @@ export const AppHeader: React.FC = () => {
             <Button variant="ghost" size="sm" asChild>
               <Link to="/dashboard">
                 <LayoutDashboard className="h-4 w-4 mr-1" /> Dashboard
+              </Link>
+            </Button>
+            <Button variant="ghost" size="sm" asChild>
+              <Link to="/projects">
+                <FolderKanban className="h-4 w-4 mr-1" /> Projects
               </Link>
             </Button>
             <Button variant="ghost" size="sm" asChild>
