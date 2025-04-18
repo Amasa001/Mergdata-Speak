@@ -30,10 +30,13 @@ import TranscriptionTask from "./pages/TranscriptionTask";
 import TranscriptValidationTask from "./pages/TranscriptValidationTask";
 
 // Import project-related pages
-import ProjectList from "./pages/ProjectList";
+import ProjectListPage from "./pages/ProjectListPage";
 import { ProjectCreate } from "./pages/ProjectCreate";
 import ProjectDetail from "./pages/ProjectDetail";
 import ProjectTaskUpload from "./pages/ProjectTaskUpload";
+import ProjectSettings from "./pages/ProjectSettings";
+// Import fallback if needed
+import { ProjectList as ProjectListComponent } from "@/components/projects/ProjectList";
 
 // Import dashboard components
 import { TTSDashboard } from "@/components/dashboard/roles/TTSDashboard";
@@ -88,10 +91,11 @@ const App = () => (
             <Route path="/admin/dashboard" element={<AdminDashboard />} />
             
             {/* Project Routes */}
-            <Route path="/projects" element={<ProjectList />} />
+            <Route path="/projects" element={<ProjectListPage />} />
             <Route path="/projects/new" element={<ProjectCreate />} />
             <Route path="/projects/:projectId" element={<ProjectDetail />} />
             <Route path="/projects/:projectId/upload" element={<ProjectTaskUpload />} />
+            <Route path="/projects/:projectId/settings" element={<ProjectSettings />} />
           </Route>
 
           {/* Catch-all route */}
