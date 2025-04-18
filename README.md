@@ -1,18 +1,5 @@
-# Welcome to your Lovable project
-
 ## Project info
-
-**URL**: https://lovable.dev/projects/11fbeb69-e329-41db-b492-226100072ab3
-
-## How can I edit this code?
-
-There are several ways of editing your application.
-
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/11fbeb69-e329-41db-b492-226100072ab3) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
+MergData Speak is a comprehensive platform dedicated to preserving and promoting African languages through technology. The platform brings together diverse contributors to build voice datasets for African languages, enabling the creation of AI speech technology that works across multiple languages.
 
 **Use your preferred IDE**
 
@@ -60,14 +47,3 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/11fbeb69-e329-41db-b492-226100072ab3) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes it is!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
