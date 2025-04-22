@@ -3,6 +3,7 @@ import { Navigate, Outlet } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { AppLayout } from './AppLayout';
 import { Session } from '@supabase/supabase-js';
+import { Loader2 } from 'lucide-react';
 
 /**
  * A component to protect routes that require authentication.
@@ -15,39 +16,48 @@ export const ProtectedRoute: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let mounted = true;
+
     const fetchSession = async () => {
       try {
         const { data, error } = await supabase.auth.getSession();
         if (error) {
           console.error("Error fetching session:", error);
-          setSession(null);
+          if (mounted) setSession(null);
         } else {
-          setSession(data.session);
+          if (mounted) setSession(data.session);
         }
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     };
 
     fetchSession();
 
     // Also listen for auth changes
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      // If user logs out while on protected route, this will trigger redirect
-      if (!session && !loading) {
-         setLoading(false); // Ensure loading is false if session becomes null
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+      if (mounted) {
+        setSession(currentSession);
       }
     });
 
+    // Cleanup function to prevent state updates after unmount
     return () => {
+      mounted = false;
       authListener?.subscription.unsubscribe();
     };
-  }, [loading]); // Re-check if loading state changes unexpectedly
+  }, []); // Empty dependency array - only run on mount/unmount
 
   if (loading) {
-    // Optional: Render a loading spinner/indicator
-    return <div>Loading...</div>; 
+    // Render a loading spinner/indicator
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="flex flex-col items-center gap-2">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Loading your session...</p>
+        </div>
+      </div>
+    );
   }
 
   if (!session) {

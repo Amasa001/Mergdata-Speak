@@ -14,6 +14,8 @@ import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { batchInsertTasks } from '@/utils/transactionUtils';
+import { TaskBatchResult } from '@/types/project';
 
 type Project = Database['public']['Tables']['projects']['Row'];
 type TaskType = Database['public']['Tables']['tasks']['Row']['type'];
@@ -662,7 +664,7 @@ const ProjectTaskUpload: React.FC = () => {
       }
       console.log(`Successfully parsed ${parsedData.length} rows.`);
 
-      // 2. Map Parsed Data to Task Objects
+      // 2. Map Parsed Data to Task Objects with improved field validation
       const tasksToInsert = parsedData.map((item, index) => {
          // Ensure item is an object
          if (typeof item !== 'object' || item === null) {
@@ -670,19 +672,28 @@ const ProjectTaskUpload: React.FC = () => {
              return null; // Skip this row
          }
          
-         // Construct the 'content' JSON based on taskType
+         // Create common task content with better validation
          let taskContent: any = {
              task_title: item.task_title || `${batchName} - Item ${index + 1}`,
              task_description: item.task_description || `Task ${index + 1} from batch '${batchName}'.`,
+             batch_name: batchName
          };
          
          if (taskType === 'translation') {
+            // Validate required fields
+            if (!item.source_text) {
+                console.warn(`Row ${index + 1}: Missing required 'source_text' field`);
+                return null;
+            }
+            
             // Translation-specific fields
-            taskContent.source_text = item.source_text || '';
+            taskContent.source_text = item.source_text;
             taskContent.source_language = item.source_language || sourceLanguage;
             
             // Additional optional fields if present
             if (item.domain) taskContent.domain = item.domain;
+            if (item.instructions) taskContent.instructions = item.instructions;
+            if (item.deadline) taskContent.deadline = item.deadline;
             
             // Construct task object
             return {
@@ -696,8 +707,18 @@ const ProjectTaskUpload: React.FC = () => {
             };
          } 
          else if (taskType === 'tts') {
+            // Validate required fields
+            if (!item.text_to_speak) {
+                console.warn(`Row ${index + 1}: Missing required 'text_to_speak' field`);
+                return null;
+            }
+            
             // TTS-specific fields
-            taskContent.text_to_speak = item.text_to_speak || '';
+            taskContent.text_to_speak = item.text_to_speak;
+            
+            // Additional optional fields
+            if (item.domain) taskContent.domain = item.domain;
+            if (item.instructions) taskContent.instructions = item.instructions;
             
             // Construct task object
             return {
@@ -711,8 +732,18 @@ const ProjectTaskUpload: React.FC = () => {
             };
          }
          else if (taskType === 'transcription') {
+            // Validate required fields
+            if (!item.audio_url) {
+                console.warn(`Row ${index + 1}: Missing required 'audio_url' field`);
+                return null;
+            }
+            
             // Transcription-specific fields
-            taskContent.audio_url = item.audio_url || '';
+            taskContent.audio_url = item.audio_url;
+            
+            // Additional optional fields
+            if (item.domain) taskContent.domain = item.domain;
+            if (item.instructions) taskContent.instructions = item.instructions;
             
             // Construct task object
             return {
@@ -732,37 +763,43 @@ const ProjectTaskUpload: React.FC = () => {
       }).filter(Boolean); // Remove nulls
 
       if (tasksToInsert.length === 0) {
-           throw new Error('No valid tasks could be created from the file data. Check file content and headers.');
+         throw new Error('No valid tasks could be created from the file data. Check file content and headers.');
       }
       
+      // Display validation result to the user
       console.log(`Prepared ${tasksToInsert.length} valid tasks for insertion.`);
-
-      // 3. Bulk Insert Tasks
-      const BATCH_SIZE = 50;
-      let totalInserted = 0;
-      for (let i = 0; i < tasksToInsert.length; i += BATCH_SIZE) {
-          const batch = tasksToInsert.slice(i, i + BATCH_SIZE);
-          toast.info(`Inserting batch ${Math.floor(i/BATCH_SIZE) + 1} of ${Math.ceil(tasksToInsert.length/BATCH_SIZE)} (${batch.length} tasks)...`);
-          const { error } = await supabase.from('tasks').insert(batch as any);
-          if (error) {
-              console.error(`Error inserting batch ${Math.floor(i/BATCH_SIZE) + 1}:`, error);
-              throw new Error(`Failed to insert tasks into database: ${error.message}`);
-          }
-          totalInserted += batch.length;
-      }
-
-      toast.success(`Successfully created ${totalInserted} tasks for project "${project?.name}".`);
-      // Reset form
-      setFile(null);
-      if (fileInputRef.current) {
-         fileInputRef.current.value = '';
-      }
       
-      // Navigate back to project detail page
-      setTimeout(() => {
-        navigate(`/projects/${projectId}`);
-      }, 2000);
+      // Show progress information
+      toast.info(`Processing ${tasksToInsert.length} tasks... Please wait.`);
 
+      // 3. Use batch insert utility with transaction safety
+      const result: TaskBatchResult = await batchInsertTasks(tasksToInsert);
+      
+      // Handle batch result
+      if (result.failed === 0) {
+        // Success case - all tasks created
+        toast.success(`Successfully created ${result.success} tasks for project "${project?.name}".`);
+        
+        // Reset form
+        setFile(null);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        
+        // Navigate back to project detail page
+        setTimeout(() => {
+          navigate(`/projects/${projectId}`);
+        }, 2000);
+      } else if (result.success === 0) {
+        // Complete failure case
+        throw new Error(`Failed to insert all ${result.failed} tasks. Check console for details.`);
+      } else {
+        // Partial success case - show modal with details
+        toast.error(`Created ${result.success} tasks, but ${result.failed} failed. Review errors in console.`);
+        
+        // Log errors for review
+        console.error('Task insertion errors:', result.errors);
+      }
     } catch (error: any) {
       console.error('Bulk task creation failed:', error);
       toast.error(`Task upload failed: ${error.message}`);

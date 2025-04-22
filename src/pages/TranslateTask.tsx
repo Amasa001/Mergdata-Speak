@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardDescription, CardTitle, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ArrowLeft, SkipForward, Check, Languages, Loader2, Save, Info, AlertCircle } from 'lucide-react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { LanguageFilter } from '@/components/tasks/LanguageFilter';
 import { Progress } from "@/components/ui/progress";
@@ -79,6 +79,13 @@ interface MappedTranslationTask {
   validatorFeedback?: string;
 }
 
+// Add new interface for validated translation
+interface ValidatedTranslation {
+  translation_text: string;
+  validated_at?: string;
+  validator_comment?: string;
+}
+
 // --- Special Characters Map ---
 const specialCharsMap: Record<string, string[]> = {
   'akan': ['ɛ', 'Ɛ', 'ɔ', 'Ɔ', 'ŋ', 'Ŋ'],
@@ -89,6 +96,7 @@ const specialCharsMap: Record<string, string[]> = {
 };
 
 const TranslateTask: React.FC = () => {
+  const { taskId } = useParams<{ taskId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
@@ -106,6 +114,7 @@ const TranslateTask: React.FC = () => {
   const translationInputRef = useRef<HTMLTextAreaElement>(null);
   const [userLanguages, setUserLanguages] = useState<string[]>([]);
   const [revisionFeedback, setRevisionFeedback] = useState<string>('');
+  const [validatedTranslation, setValidatedTranslation] = useState<ValidatedTranslation | null>(null);
 
   // Parse URL query parameters for language filter
   useEffect(() => {
@@ -153,6 +162,7 @@ const TranslateTask: React.FC = () => {
       setCurrentTranslation('');
       setRevisionFeedback(''); // Reset revision feedback
 
+      // Parse URL parameters
       const queryParams = new URLSearchParams(location.search);
       const contributionIdParam = queryParams.get('contribution_id');
       const contributionId = contributionIdParam ? parseInt(contributionIdParam, 10) : null;
@@ -160,6 +170,114 @@ const TranslateTask: React.FC = () => {
       const showCorrectionsOnly = queryParams.get('corrections') === 'true';
       const projectIdParam = queryParams.get('project_id');
       const projectId = projectIdParam ? parseInt(projectIdParam, 10) : null;
+      
+      // Check if we have a taskId from URL parameters
+      const singleTaskId = taskId ? parseInt(taskId, 10) : null;
+      
+      // If we have a specific task ID from URL, fetch just that task
+      if (singleTaskId) {
+        try {
+          // First fetch the task
+          const { data: taskData, error: taskError } = await supabase
+            .from('tasks')
+            .select('*')
+            .eq('id', singleTaskId)
+            .single();
+          
+          if (taskError) throw taskError;
+          
+          if (taskData && taskData.type === 'translation') {
+            const content = taskData.content as TranslationTaskContent;
+            
+            // Also fetch the latest validated contribution for this task
+            const { data: contributionData, error: contribError } = await supabase
+              .from('contributions')
+              .select(`
+                id,
+                status,
+                submitted_data,
+                validations (
+                  is_approved,
+                  comment,
+                  created_at
+                )
+              `)
+              .eq('task_id', singleTaskId)
+              .eq('status', 'validated')
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .single();
+            
+            if (!contribError && contributionData) {
+              const submittedData = contributionData.submitted_data as { translation_text?: string };
+              setValidatedTranslation({
+                translation_text: submittedData?.translation_text || '',
+                validated_at: contributionData.validations?.[0]?.created_at,
+                validator_comment: contributionData.validations?.[0]?.comment
+              });
+            }
+            
+            if (content && typeof content === 'object' && 
+                typeof (content.task_title || content.title) === 'string' &&
+                typeof (content.source_text || content.sourceText) === 'string' &&
+                typeof (content.source_language || content.sourceLanguage) === 'string') {
+              
+              // Check if there's a previous contribution by this user
+              const { data: contributionData } = await supabase
+                .from('contributions')
+                .select('*')
+                .eq('task_id', singleTaskId)
+                .eq('user_id', userId)
+                .order('created_at', { ascending: false })
+                .limit(1);
+              
+              let previousTranslation = '';
+              if (contributionData && contributionData.length > 0) {
+                const submittedData = contributionData[0].submitted_data as any;
+                previousTranslation = submittedData?.translation || '';
+              }
+              
+              const mappedTask: MappedTranslationTask = {
+                id: taskData.id,
+                title: content.task_title || content.title || '',
+                description: content.task_description || '',
+                sourceText: content.source_text || content.sourceText || '',
+                sourceLanguage: content.source_language || content.sourceLanguage || 'English',
+                targetLanguage: taskData.language || content.target_language || '',
+                domain: content.domain || content.batch_name || 'general',
+                previousTranslation
+              };
+              
+              setAllTasks([mappedTask]);
+              setFilteredTasks([mappedTask]);
+              if (previousTranslation) {
+                setCurrentTranslation(previousTranslation);
+              }
+              setSelectedLanguage(mappedTask.targetLanguage.toLowerCase());
+              setIsLoadingTasks(false);
+              return; // Stop processing, we loaded the specific task
+            }
+          } else {
+            toast({
+              title: 'Task Error',
+              description: 'The requested task is not a translation task or could not be found.',
+              variant: 'destructive',
+            });
+            navigate('/dashboard');
+            return;
+          }
+        } catch (error) {
+          console.error('Error fetching specific task:', error);
+          toast({
+            title: 'Error',
+            description: 'Failed to load the translation task.',
+            variant: 'destructive',
+          });
+        }
+      }
+      
+      // Rest of the existing fetchTasks implementation
+      // for handling contribution_id, project_id, etc.
 
       try {
         if (!userId) {
@@ -207,7 +325,7 @@ const TranslateTask: React.FC = () => {
             
             const task = rejectedContribution.tasks;
             const content = task.content as unknown as Partial<TranslationTaskContent>;
-            const submittedData = rejectedContribution.submitted_data as any; // Cast for now
+            const submittedData = rejectedContribution.submitted_data as any;
             const previousTranslation = submittedData?.translation_text || '';
             const validatorComment = validationData?.comment || 'No feedback provided.';
 
@@ -445,7 +563,7 @@ const TranslateTask: React.FC = () => {
     if (userId) {
       fetchTasks();
     }
-  }, [userId, selectedLanguage, location.search]);
+  }, [userId, selectedLanguage, location.search, taskId, navigate, toast]);
 
   // Define the fetchTasks function outside of useEffect for reuse
   const fetchTasks = useCallback(async () => {
@@ -847,87 +965,108 @@ const TranslateTask: React.FC = () => {
         <Card className="overflow-hidden">
           <CardHeader>
             <div className="flex justify-between items-start">
-                <div>
-                    <CardTitle>{currentTask.title} ({currentTaskIndex + 1}/{tasksInCurrentSet})</CardTitle>
-                    <CardDescription>{currentTask.description || `Translate the text below from ${currentTask.sourceLanguage} to ${currentTask.targetLanguage}`}</CardDescription>
-                    <div className="flex gap-2 mt-2">
-                        <Badge variant="secondary">From: {currentTask.sourceLanguage}</Badge>
-                        <Badge variant="outline">To: {currentTask.targetLanguage}</Badge>
-                    </div>
+              <div>
+                <CardTitle>{currentTask.title}</CardTitle>
+                <CardDescription>
+                  {validatedTranslation 
+                    ? "Validated Translation"
+                    : currentTask.description || `Translate the text below from ${currentTask.sourceLanguage} to ${currentTask.targetLanguage}`
+                  }
+                </CardDescription>
+                <div className="flex gap-2 mt-2">
+                  <Badge variant="secondary">From: {currentTask.sourceLanguage}</Badge>
+                  <Badge variant="outline">To: {currentTask.targetLanguage}</Badge>
+                  {validatedTranslation && (
+                    <Badge variant="default" className="bg-green-100 text-green-800 hover:bg-green-200">Validated</Badge>
+                  )}
                 </div>
-                 <Button variant="outline" size="sm" onClick={handleSkipTask} disabled={isSubmitting}>
-                     Skip Task <SkipForward className="h-4 w-4 ml-1" />
-                 </Button>
+              </div>
             </div>
-             <Progress value={((currentTaskIndex + 1) / tasksInCurrentSet) * 100} className="mt-4 h-2" />
           </CardHeader>
           
           <CardContent className="space-y-6">
-            {/* Revision Feedback Display */}
-            {(currentTask?.isRevision || currentTask?.validatorFeedback) && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Validator Feedback</AlertTitle>
-                <AlertDescription>
-                  {currentTask?.validatorFeedback || revisionFeedback}
-                </AlertDescription>
-              </Alert>
-            )}
-            
             {/* Source Text */}
             <div className="space-y-2">
-                <Label htmlFor="source-text" className="text-base">Source Text ({currentTask.sourceLanguage})</Label>
-                <Card className="bg-gray-50 p-4 min-h-[200px]">
-                    <p id="source-text" className="text-gray-700 whitespace-pre-wrap">{currentTask.sourceText}</p>
-                </Card>
-             </div>
+              <Label htmlFor="source-text" className="text-base">Source Text ({currentTask.sourceLanguage})</Label>
+              <Card className="bg-gray-50 p-4 min-h-[100px]">
+                <p id="source-text" className="text-gray-700 whitespace-pre-wrap">{currentTask.sourceText}</p>
+              </Card>
+            </div>
              
-             {/* Translation Input Area */} 
-             <div className="space-y-2 flex flex-col">
-                 <Label htmlFor="translation-input" className="text-base">Your Translation ({currentTask.targetLanguage})</Label>
-                 <Textarea 
-                    ref={translationInputRef}
-                    id="translation-input"
-                    placeholder={`Enter your translation in ${currentTask.targetLanguage}...`}
-                    value={currentTranslation}
-                    onChange={handleTranslationChange}
-                    rows={8}
-                    className="flex-grow resize-none"
-                    disabled={isSubmitting || isCurrentTaskSaved}
-                 />
-                 
-                 {/* Special Character Buttons */} 
-                 {currentSpecialChars.length > 0 && (
-                    <div className="pt-2">
-                      <span className="text-xs text-gray-500 mr-2">Insert:</span>
-                      {currentSpecialChars.map(char => (
-                          <Button 
-                             key={char} 
-                             variant="outline"
-                             size="sm"
-                             className="font-mono mr-1 px-2 py-0.5 h-auto text-sm" 
-                             onClick={() => insertSpecialChar(char)}
-                             disabled={isSubmitting || isCurrentTaskSaved}
-                           >
-                              {char}
-                          </Button>
-                      ))}
-                    </div>
-                 )}
-                 
-                 {/* Save Button Area */}
-                 <div className="flex justify-end mt-2">
-                   {isCurrentTaskSaved ? (
-                       <div className="text-sm text-green-600 flex items-center">
-                           <Check className="h-4 w-4 mr-1"/> Saved for submission
-                       </div>
-                   ) : (
-                       <Button variant="outline" size="sm" onClick={handleSaveTranslation} disabled={!currentTranslation.trim() || isSubmitting}>
-                          <Save className="h-4 w-4 mr-1"/> Save Translation
-                       </Button>
-                   )}
-                 </div>
-             </div>
+            {/* Validated Translation Display */}
+            {validatedTranslation ? (
+              <div className="space-y-2">
+                <Label htmlFor="validated-translation" className="text-base">
+                  Validated Translation ({currentTask.targetLanguage})
+                  {validatedTranslation.validated_at && (
+                    <span className="text-sm text-muted-foreground ml-2">
+                      (Validated on {new Date(validatedTranslation.validated_at).toLocaleDateString()})
+                    </span>
+                  )}
+                </Label>
+                <Card className="bg-green-50 p-4 min-h-[100px]">
+                  <p id="validated-translation" className="text-gray-700 whitespace-pre-wrap">
+                    {validatedTranslation.translation_text}
+                  </p>
+                </Card>
+                {validatedTranslation.validator_comment && (
+                  <Alert>
+                    <Info className="h-4 w-4" />
+                    <AlertTitle>Validator Comment</AlertTitle>
+                    <AlertDescription>
+                      {validatedTranslation.validator_comment}
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </div>
+            ) : (
+              // Translation Input Area
+              <div className="space-y-2 flex flex-col">
+                  <Label htmlFor="translation-input" className="text-base">Your Translation ({currentTask.targetLanguage})</Label>
+                  <Textarea 
+                     ref={translationInputRef}
+                     id="translation-input"
+                     placeholder={`Enter your translation in ${currentTask.targetLanguage}...`}
+                     value={currentTranslation}
+                     onChange={handleTranslationChange}
+                     rows={8}
+                     className="flex-grow resize-none"
+                     disabled={isSubmitting || isCurrentTaskSaved}
+                  />
+                  
+                  {/* Special Character Buttons */} 
+                  {currentSpecialChars.length > 0 && (
+                     <div className="pt-2">
+                       <span className="text-xs text-gray-500 mr-2">Insert:</span>
+                       {currentSpecialChars.map(char => (
+                           <Button 
+                              key={char} 
+                              variant="outline"
+                              size="sm"
+                              className="font-mono mr-1 px-2 py-0.5 h-auto text-sm" 
+                              onClick={() => insertSpecialChar(char)}
+                              disabled={isSubmitting || isCurrentTaskSaved}
+                            >
+                               {char}
+                           </Button>
+                       ))}
+                     </div>
+                  )}
+                  
+                  {/* Save Button Area */}
+                  <div className="flex justify-end mt-2">
+                    {isCurrentTaskSaved ? (
+                        <div className="text-sm text-green-600 flex items-center">
+                            <Check className="h-4 w-4 mr-1"/> Saved for submission
+                        </div>
+                    ) : (
+                        <Button variant="outline" size="sm" onClick={handleSaveTranslation} disabled={!currentTranslation.trim() || isSubmitting}>
+                           <Save className="h-4 w-4 mr-1"/> Save Translation
+                        </Button>
+                    )}
+                  </div>
+              </div>
+            )}
           </CardContent>
            <CardFooter className="flex justify-end border-t pt-4">
                  <Button 

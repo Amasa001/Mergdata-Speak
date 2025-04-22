@@ -10,6 +10,9 @@ import { Progress } from "@/components/ui/progress";
 import { supabase } from '@/integrations/supabase/client'; // Import Supabase client
 import type { Database } from '@/integrations/supabase/types'; // Import generated types
 import { Badge } from "@/components/ui/badge";
+import { standardizeLanguageId, getLanguageLabel, getLanguageById, AVAILABLE_LANGUAGES } from '@/utils/languageUtils';
+import { uploadFileAndCreateContribution } from '@/utils/storageUtils';
+import { TaskType, validateTaskForContribution, validateUserTaskPermission } from '@/utils/taskUtils';
 
 // Define the expected structure of the content field for ASR tasks
 interface ASRTaskContent {
@@ -89,12 +92,45 @@ const ASRTask: React.FC = () => {
         const completedTaskIds = userContributions?.map(cont => cont.task_id) || [];
         console.log("User has already contributed to these tasks:", completedTaskIds);
 
-        // Then get all pending ASR tasks
-        const { data, error } = await supabase
+        // Then get all pending ASR tasks with permissions validation
+        const { data: userProfile, error: profileError } = await supabase
+          .from('profiles')
+          .select('role, languages')
+          .eq('id', userId)
+          .single();
+        
+        if (profileError) {
+          console.error("Error fetching user profile:", profileError);
+          toast({ title: "Error", description: "Failed to load your profile data.", variant: "destructive" });
+          throw profileError;
+        }
+        
+        // Verify user has the correct role for ASR tasks
+        const hasValidRole = ['asr_contributor', 'admin'].includes(userProfile.role);
+        
+        if (!hasValidRole) {
+          toast({ 
+            title: "Access Restricted", 
+            description: "Your account doesn't have permission to perform ASR tasks.", 
+            variant: "destructive" 
+          });
+          setIsLoadingTasks(false);
+          return;
+        }
+
+        // Query tasks with proper filtering by user's languages
+        const query = supabase
           .from('tasks')
           .select('*')
           .eq('type', 'asr')
-          .eq('status', 'pending'); // Fetch only pending tasks
+          .eq('status', 'pending');
+        
+        // If user has specific languages, filter by those
+        if (userProfile.languages && userProfile.languages.length > 0) {
+          query.in('language', userProfile.languages);
+        }
+        
+        const { data, error } = await query;
 
         if (error) {
           console.error("Error fetching ASR tasks:", error);
@@ -111,31 +147,38 @@ const ASRTask: React.FC = () => {
           const languages = Array.from(
             new Set(
               availableTasks
-                .map(task => task.language)
-                .filter((l): l is string => l !== null && l !== undefined && l.trim() !== '') 
+                .map(task => task.language ? standardizeLanguageId(task.language) : '')
+                .filter(l => l.trim() !== '') 
             )
           );
           setAvailableLanguages(languages);
 
-          // Map fetched data safely
+          // Map fetched data safely with enhanced error handling
           const mappedTasks: MappedASRTask[] = availableTasks.reduce((acc: MappedASRTask[], task) => {
-            // Cast to unknown first, then attempt to cast to ASRTaskContent
-            const content = task.content as unknown as Partial<ASRTaskContent>; // Use Partial for safer access
+            try {
+              // Cast to unknown first, then attempt to cast to ASRTaskContent
+              const content = task.content as unknown as Partial<ASRTaskContent>; // Use Partial for safer access
 
-            // Check if essential fields exist
-            if (content && typeof content === 'object' && 
-                typeof content.task_title === 'string' &&
-                typeof content.task_description === 'string') {
-              
-              acc.push({
-                id: task.id,
-                title: content.task_title,
-                description: content.task_description,
-                imageUrl: content.image_url, // Access potentially undefined field
-                language: task.language ?? 'Unknown'
-              });
-            } else {
-              console.warn(`Task ${task.id} has unexpected content format:`, task.content);
+              // Check if essential fields exist
+              if (content && typeof content === 'object' && 
+                  typeof content.task_title === 'string' &&
+                  typeof content.task_description === 'string') {
+                
+                // Standardize the language ID
+                const languageId = task.language ? standardizeLanguageId(task.language) : 'unknown';
+                
+                acc.push({
+                  id: task.id,
+                  title: content.task_title,
+                  description: content.task_description,
+                  imageUrl: content.image_url, // Access potentially undefined field
+                  language: languageId
+                });
+              } else {
+                console.warn(`Task ${task.id} has unexpected content format:`, task.content);
+              }
+            } catch (parseError) {
+              console.error(`Error parsing task ${task.id}:`, parseError);
             }
             return acc;
           }, []);
@@ -146,7 +189,8 @@ const ASRTask: React.FC = () => {
           if (selectedLanguage === 'all') {
               setFilteredTasks(mappedTasks);
           } else {
-              setFilteredTasks(mappedTasks.filter(task => task.language.toLowerCase() === selectedLanguage.toLowerCase()));
+              const standardLanguage = standardizeLanguageId(selectedLanguage);
+              setFilteredTasks(mappedTasks.filter(task => task.language === standardLanguage));
           }
         }
       } catch (err) {
@@ -167,7 +211,8 @@ const ASRTask: React.FC = () => {
         if (selectedLanguage === 'all') {
             setFilteredTasks(allTasks);
         } else {
-            setFilteredTasks(allTasks.filter(task => task.language.toLowerCase() === selectedLanguage.toLowerCase()));
+            const standardLanguage = standardizeLanguageId(selectedLanguage);
+            setFilteredTasks(allTasks.filter(task => task.language === standardLanguage));
         }
         // Reset index when filter changes
         setCurrentTaskIndex(0); 
@@ -177,7 +222,7 @@ const ASRTask: React.FC = () => {
     }, [selectedLanguage, allTasks]);
   
   const handleLanguageChange = (language: string) => {
-    setSelectedLanguage(language.toLowerCase()); // Ensure lowercase comparison
+    setSelectedLanguage(standardizeLanguageId(language));
   };
 
   const handleAudioDataAvailable = (url: string | null, blob: Blob | null) => {
@@ -259,89 +304,119 @@ const ASRTask: React.FC = () => {
 
     setIsSubmitting(true);
     toast({ title: "Submitting...", description: "Uploading your contributions." });
-    console.log(`Preparing to submit ${Object.keys(recordingsToSubmit).length} recordings`);
+    
+    // Track individual successes and failures
+    const successfulTasks: number[] = [];
+    const failedTasks: { taskId: number, error: string }[] = [];
 
-    const submissionPromises = Object.values(recordingsToSubmit).map(async ({ blob, taskId }) => {
+    // Process each recording sequentially with improved error handling
+    for (const [taskIdStr, { blob, taskId }] of Object.entries(recordingsToSubmit)) {
+        // First validate that the task is still in a valid state
+        const validationResult = await validateTaskForContribution(taskId);
+        
+        if (!validationResult.valid) {
+            failedTasks.push({ 
+                taskId, 
+                error: validationResult.error || 'Task validation failed'
+            });
+            continue;
+        }
+        
+        // Then validate the user has permission to contribute to this task
+        const permissionResult = await validateUserTaskPermission(userId, taskId);
+        
+        if (!permissionResult.hasPermission) {
+            failedTasks.push({ 
+                taskId, 
+                error: permissionResult.error || 'Permission check failed'
+            });
+            continue;
+        }
+
+        // Generate a unique file path
         const timestamp = Date.now();
-        const filePath = `asr/${userId}/${taskId}-${timestamp}.webm`; // Unique path
-        console.log(`Processing upload for task ${taskId} to path: ${filePath}`);
-
+        const filePath = `asr/${userId}/${taskId}-${timestamp}.webm`;
+        
+        // Prepare the contribution record
+        const contributionRecord = {
+            task_id: taskId,
+            user_id: userId,
+            submitted_data: { 
+                timestamp: new Date().toISOString(),
+                source: 'asr_web_interface',
+                browser: navigator.userAgent,
+                audio_format: 'webm',
+                device_type: /Mobi|Android/i.test(navigator.userAgent) ? 'mobile' : 'desktop'
+            },
+            status: 'pending_validation' as const
+        };
+        
         try {
-            // 1. Upload audio blob to Storage
-            console.log(`Step 1: Uploading blob of type ${blob.type} and size ${blob.size} bytes`);
-            const { data: uploadData, error: uploadError } = await supabase.storage
-                .from('asr-task-images') // Using the correct bucket name
-                .upload(filePath, blob, { contentType: blob.type });
+            // Use our new utility for transaction-like behavior
+            const result = await uploadFileAndCreateContribution(
+                'asr-task-images',  // bucket name
+                filePath,           // file path
+                blob,               // file blob
+                contributionRecord, // contribution data
+                blob.type           // content type
+            );
             
-            if (uploadError) {
-                console.error(`Upload error for task ${taskId}:`, uploadError);
-                throw new Error(`Audio upload failed for task ${taskId}: ${uploadError.message}`);
+            if (result.success) {
+                successfulTasks.push(taskId);
+            } else {
+                failedTasks.push({ 
+                    taskId, 
+                    error: result.error || 'Unknown error during contribution creation'
+                });
             }
-            
-            console.log(`Step 1 complete: Upload successful, data:`, uploadData);
-
-            // 2. Get public URL (or signed URL if bucket is private)
-            console.log(`Step 2: Getting public URL for ${filePath}`);
-            const { data: urlData } = supabase.storage.from('asr-task-images').getPublicUrl(filePath);
-            const storageUrl = urlData?.publicUrl;
-            console.log(`Step 2 complete: URL obtained: ${storageUrl}`);
-
-            // 3. Insert contribution record into 'contributions' table
-            console.log(`Step 3: Creating contribution record for task ${taskId}`);
-            const { error: insertError } = await supabase
-              .from('contributions')
-              .insert({
-                  task_id: taskId,
-                  user_id: userId,
-                  submitted_data: { 
-                      timestamp: new Date().toISOString(),
-                      source: 'asr_web_interface' 
-                  },
-                  storage_url: storageUrl,
-                  status: 'pending_validation',
-              });
-            
-            if (insertError) {
-                console.error(`Insert error for task ${taskId}:`, insertError);
-                throw new Error(`Failed to save contribution record for task ${taskId}: ${insertError.message}`);
-            }
-            
-            console.log(`Step 3 complete: Contribution record created for task ${taskId}`);
-            return { taskId, success: true };
-        } catch (error: any) {
-            console.error(`Error processing task ${taskId}:`, error);
-            return Promise.reject({ taskId, error: error.message });
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            failedTasks.push({ taskId, error: errorMessage });
         }
-    });
-
-    try {
-        console.log(`Submitting all ${submissionPromises.length} promises`);
-        const results = await Promise.allSettled(submissionPromises);
-        const successfulSubmissions = results.filter(r => r.status === 'fulfilled').length;
-        const failedSubmissions = results.filter(r => r.status === 'rejected');
-
-        console.log(`Results: ${successfulSubmissions} succeeded, ${failedSubmissions.length} failed`);
-        
-        if (failedSubmissions.length > 0) {
-            console.error("Failed submissions:", failedSubmissions);
-            toast({ title: "Submission Issue", description: `${failedSubmissions.length} recording(s) failed to submit. Please try again later.`, variant: "destructive" });
-        } else {
-            toast({ title: "Batch Submitted!", description: `Successfully submitted ${successfulSubmissions} contribution(s). Thank you!`, variant: "default" });
-        }
-        
-        // Reset state and navigate away only if all successful or handle partial success
-        setRecordedAudios({});
-        setCurrentRecordingBlob(null);
-        setReviewAudioUrl(null);
-        if (reviewAudioRef.current) reviewAudioRef.current.src = '';
-        navigate('/dashboard'); // Navigate away after submission
-
-    } catch (error: any) {
-        console.error("Error during batch submission:", error);
-        toast({ title: "Submission Error", description: error.message || "An unexpected error occurred.", variant: "destructive" });
-    } finally {
-        setIsSubmitting(false);
     }
+
+    // Provide feedback based on results
+    if (successfulTasks.length > 0) {
+        toast({ 
+            title: "Submissions Complete", 
+            description: `Successfully submitted ${successfulTasks.length} recording(s)`, 
+            variant: "default" 
+        });
+    }
+    
+    if (failedTasks.length > 0) {
+        console.error("Failed task submissions:", failedTasks);
+        
+        toast({ 
+            title: "Some Submissions Failed", 
+            description: `${failedTasks.length} recording(s) could not be submitted. Please try again later.`, 
+            variant: "destructive" 
+        });
+        
+        // Keep failed recordings in state for potential retry
+        const remainingRecordings: Record<number, { blob: Blob, taskId: number }> = {};
+        failedTasks.forEach(({ taskId }) => {
+            if (recordingsToSubmit[taskId]) {
+                remainingRecordings[taskId] = recordingsToSubmit[taskId];
+            }
+        });
+        setRecordedAudios(remainingRecordings);
+    } else {
+        // Clear all recordings if everything succeeded
+        setRecordedAudios({});
+        
+        // Only navigate away if all submissions were successful
+        if (successfulTasks.length > 0) {
+            navigate('/dashboard');
+        }
+    }
+    
+    // Reset recording state
+    setCurrentRecordingBlob(null);
+    setReviewAudioUrl(null);
+    if (reviewAudioRef.current) reviewAudioRef.current.src = '';
+    
+    setIsSubmitting(false);
   };
   
   const getCurrentTask = (): MappedASRTask | null => {
@@ -395,7 +470,7 @@ const ASRTask: React.FC = () => {
                 <div>
                     <CardTitle>{currentTask.title} ({currentTaskIndex + 1}/{tasksInCurrentSet})</CardTitle>
                     <CardDescription>{currentTask.description}</CardDescription>
-                    <Badge variant="outline" className="mt-2"><Globe className="h-3 w-3 mr-1" /> {currentTask.language}</Badge>
+                    <Badge variant="outline" className="mt-2"><Globe className="h-3 w-3 mr-1" /> {getLanguageLabel(currentTask.language)}</Badge>
                 </div>
                  <Button variant="outline" size="sm" onClick={handleSkipTask} disabled={isSubmitting}>
                      Skip Task <SkipForward className="h-4 w-4 ml-1" />

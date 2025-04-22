@@ -63,22 +63,35 @@ export const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
       // First check if the user exists by email (exact match)
       let { data: emailMatch, error: emailError } = await supabase
         .from('profiles')
-        .select('id, full_name, email:id, role')
-        .eq('id', searchTerm)
+        .select('id, full_name, email, role')
+        .eq('email', searchTerm)
         .maybeSingle();
 
       if (emailError) throw emailError;
 
-      // If not found by email, search by name (partial match)
+      // If not found by email, try checking by ID as a fallback
+      if (!emailMatch) {
+        const { data: idMatch, error: idError } = await supabase
+          .from('profiles')
+          .select('id, full_name, email, role')
+          .eq('id', searchTerm)
+          .maybeSingle();
+
+        if (!idError && idMatch) {
+          emailMatch = idMatch;
+        }
+      }
+
+      // Finally, search by name (partial match)
       const { data: nameMatches, error: nameError } = await supabase
         .from('profiles')
-        .select('id, full_name, email:id, role')
+        .select('id, full_name, email, role')
         .ilike('full_name', `%${searchTerm}%`)
         .limit(5);
 
       if (nameError) throw nameError;
 
-      // Combine results, with email match first if it exists
+      // Combine results, with exact matches first if they exist
       let results = [];
       if (emailMatch) results.push(emailMatch);
       if (nameMatches) results = [...results, ...nameMatches.filter(m => m.id !== emailMatch?.id)];
@@ -208,7 +221,7 @@ export const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
                       </div>
                       <div className="flex-1">
                         <div className="font-medium">{user.full_name}</div>
-                        <div className="text-sm text-muted-foreground">{user.id}</div>
+                        <div className="text-sm text-muted-foreground">{user.email}</div>
                       </div>
                     </label>
                   </div>

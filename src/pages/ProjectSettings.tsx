@@ -25,6 +25,7 @@ import {
   AlertDialogTitle
 } from '@/components/ui/alert-dialog';
 import { MultiSelect } from '@/components/ui/multi-select';
+import { safelyDeleteProject } from '@/utils/projectUtils';
 
 type Project = Database['public']['Tables']['projects']['Row'];
 
@@ -233,78 +234,41 @@ const ProjectSettings: React.FC = () => {
     }
     
     setIsSubmitting(true);
+    setIsDeleteDialogOpen(false); // Close dialog immediately to prevent double-clicks
+    
+    toast({
+      title: 'Deleting project...',
+      description: 'This may take a moment. Please wait.',
+    });
+    
     try {
-      // First, get all tasks associated with this project
-      const { data: projectTasks, error: taskFetchError } = await supabase
-        .from('tasks')
-        .select('id')
-        .eq('project_id', projectId);
-        
-      if (taskFetchError) throw taskFetchError;
+      // Use our new utility for safe project deletion
+      const result = await safelyDeleteProject(Number(projectId), userId);
       
-      if (projectTasks && projectTasks.length > 0) {
-        // Get task IDs
-        const taskIds = projectTasks.map(task => task.id);
-        
-        // Delete all contributions associated with these tasks
-        const { error: contributionsError } = await supabase
-          .from('contributions')
-          .delete()
-          .in('task_id', taskIds);
-          
-        if (contributionsError) throw contributionsError;
-        
-        // Delete any validations for these contributions (if they exist)
-        const { error: validationsError } = await supabase
-          .from('validations')
-          .delete()
-          .in('contribution_id', taskIds);
-        
-        // We don't throw on validation error since they might not always exist
-        if (validationsError) console.warn('Could not delete validations:', validationsError);
+      if (!result.success) {
+        throw new Error(result.error || 'Unknown error during project deletion');
       }
-      
-      // Now delete all tasks associated with the project
-      const { error: tasksError } = await supabase
-        .from('tasks')
-        .delete()
-        .eq('project_id', projectId);
-      
-      if (tasksError) throw tasksError;
-      
-      // Then delete all project members
-      const { error: membersError } = await supabase
-        .from('project_members')
-        .delete()
-        .eq('project_id', projectId);
-      
-      if (membersError) throw membersError;
-      
-      // Finally delete the project
-      const { error } = await supabase
-        .from('projects')
-        .delete()
-        .eq('id', projectId);
-        
-      if (error) throw error;
       
       toast({
         title: 'Project deleted',
-        description: 'The project has been permanently deleted',
+        description: `Project "${project?.name}" has been permanently deleted with all its associated data.`,
       });
       
       // Navigate back to projects list
       navigate('/projects');
     } catch (error) {
       console.error('Error deleting project:', error);
+      
+      // Reopen the dialog so the user can try again
+      setIsDeleteDialogOpen(true);
+      
       toast({
         title: 'Delete failed',
-        description: 'Failed to delete the project',
+        description: error instanceof Error ? error.message : 'Failed to delete the project',
         variant: 'destructive',
       });
     } finally {
       setIsSubmitting(false);
-      setIsDeleteDialogOpen(false);
     }
   };
 

@@ -12,21 +12,46 @@ import { LanguageSelector } from '@/components/auth/LanguageSelector';
 import { ProfileBadge } from '@/components/profile/ProfileBadge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
+import { User } from '@supabase/supabase-js';
+import type { Database } from '@/integrations/supabase/types';
+
+// Define types for the profile data
+interface UserProfile {
+  fullName: string;
+  email: string;
+  role: string;
+  languages: string[];
+  avatarUrl: string;
+}
+
+// Define types for user statistics
+interface UserStatistics {
+  contributions: number;
+  tasksCompleted: number;
+  languages: number;
+  joinDate: string;
+}
+
+// Define valid badge types
+type BadgeType = 'asr' | 'tts' | 'translate' | 'transcribe' | 'validate';
+
+// Type for database profile data
+type DatabaseProfile = Database['public']['Tables']['profiles']['Row'];
 
 const Profile: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
-  const [user, setUser] = useState<any>(null);
-  const [profile, setProfile] = useState({
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<UserProfile>({
     fullName: '',
     email: '',
     role: '',
-    languages: [] as string[],
+    languages: [],
     avatarUrl: ''
   });
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [userStats, setUserStats] = useState({
+  const [userStats, setUserStats] = useState<UserStatistics>({
     contributions: 0,
     tasksCompleted: 0,
     languages: 0,
@@ -34,7 +59,7 @@ const Profile: React.FC = () => {
   });
   
   // Use valid badge types from the BadgeType definition
-  const userBadges: ('asr' | 'tts' | 'translate' | 'transcribe' | 'validate')[] = [
+  const userBadges: BadgeType[] = [
     "asr",
     "tts",
     "translate"

@@ -76,6 +76,7 @@ const App = () => (
             <Route path="/tts-dashboard" element={<TTSDashboard />} />
             <Route path="/transcribe" element={<TranscribeTask />} />
             <Route path="/translate" element={<TranslateTask />} />
+            <Route path="/translate/:taskId" element={<TranslateTask />} />
             <Route path="/validate" element={<ValidateTask />} />
             <Route path="/validate/:contributionId" element={<ValidateTask />} />
             <Route path="/validate-asr/:contributionId" element={<ValidateTask />} />

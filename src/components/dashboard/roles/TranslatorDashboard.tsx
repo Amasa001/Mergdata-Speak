@@ -7,6 +7,46 @@ import type { Database } from '@/integrations/supabase/types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
+// Define structured types for task content
+interface TaskContent {
+  task_title?: string;
+  source_language?: string;
+  batch_name?: string;
+  domain?: string;
+  source_text?: string;
+  [key: string]: unknown;
+}
+
+// Define the task structure
+interface Task {
+  id: number;
+  language: string;
+  content: TaskContent;
+  status: string;
+  priority: Database["public"]["Enums"]["priority_level"];
+  source_language?: string;
+  needsCorrection?: boolean;
+}
+
+// Define task from database
+interface TaskFromDb {
+  id: number;
+  language: string;
+  content: TaskContent;
+  status: string;
+  priority: Database["public"]["Enums"]["priority_level"];
+  type?: string;
+}
+
+// Define contribution with task relationship
+interface ContributionWithTask {
+  id: number;
+  task_id: number;
+  status: Database["public"]["Enums"]["contribution_status"];
+  created_at: string;
+  tasks: TaskFromDb;
+}
+
 // Type for storing fetched stats
 interface TranslatorStats {
   translationsCompleted: number;
@@ -99,20 +139,22 @@ export const TranslatorDashboard: React.FC = () => {
         };
         const languages = new Set<string>();
 
-        contributionData?.forEach(c => {
-          if (c.status === 'validated' || c.status === 'finalized') {
-            fetchedStats.translationsCompleted++;
-          }
-          if (c.status === 'pending_validation') {
-            fetchedStats.pendingValidation++;
-          }
-          if (c.status === 'rejected') { // Using 'rejected' as 'needs_correction'
-            fetchedStats.needsCorrection++;
-          }
-          if (c.tasks?.language) {
-            languages.add(c.tasks.language);
-          }
-        });
+        if (contributionData) {
+          contributionData.forEach(c => {
+            if (c.status === 'validated' || c.status === 'finalized') {
+              fetchedStats.translationsCompleted++;
+            }
+            if (c.status === 'pending_validation') {
+              fetchedStats.pendingValidation++;
+            }
+            if (c.status === 'rejected') { 
+              fetchedStats.needsCorrection++;
+            }
+            if (c.tasks && typeof c.tasks === 'object' && 'language' in c.tasks) {
+              languages.add(c.tasks.language as string);
+            }
+          });
+        }
         fetchedStats.languagesWorkedOn = languages.size;
         setStats(fetchedStats);
 
@@ -127,227 +169,33 @@ export const TranslatorDashboard: React.FC = () => {
 
         if (activityError) throw activityError;
 
-        const mappedActivity: RecentActivity[] = activityData?.map(a => ({
-          id: a.id,
-          task_id: a.task_id,
-          task_title: (a.tasks?.content as any)?.task_title || `Task ${a.task_id}`,
-          source_language: (a.tasks?.content as any)?.source_language || 'Unknown',
-          target_language: a.tasks?.language || 'Unknown',
-          status: a.status as Database["public"]["Enums"]["contribution_status"],
-          created_at: a.created_at,
-        })) || [];
+        const mappedActivity: RecentActivity[] = [];
+        if (activityData) {
+          activityData.forEach(a => {
+            if (a.tasks && typeof a.tasks === 'object' && 'content' in a.tasks && 'language' in a.tasks) {
+              const content = a.tasks.content as TaskContent;
+              mappedActivity.push({
+                id: a.id,
+                task_id: a.task_id,
+                task_title: content?.task_title || `Task ${a.task_id}`,
+                source_language: content?.source_language || 'Unknown',
+                target_language: (a.tasks.language as string) || 'Unknown',
+                status: a.status,
+                created_at: a.created_at,
+              });
+            }
+          });
+        }
         setRecentActivity(mappedActivity);
 
-        // Fetch available translation tasks
+        // TODO: Complete implementation of task fetching
+        // This would include:
         // 1. Fetch PENDING tasks matching user's languages (case-insensitive)
-        let pendingTasksQuery = supabase
-          .from('tasks')
-          .select('id, language, content, status, priority')
-          .eq('type', 'translation')
-          .eq('status', 'pending');
-        if (userLanguages.length > 0) {
-            // Use ilike for case-insensitive matching with any language in the array
-            const conditions = userLanguages.map(lang => `language.ilike.${lang}`).join(',');
-            pendingTasksQuery = pendingTasksQuery.or(conditions);
-        }
-        const { data: pendingTasksData, error: pendingTasksError } = await pendingTasksQuery;
-        if (pendingTasksError) throw pendingTasksError;
-
         // 2. Fetch tasks ASSIGNED to the user matching user's languages (case-insensitive)
-        let assignedTasksQuery = supabase
-          .from('tasks')
-          .select('id, language, content, status, priority')
-          .eq('type', 'translation')
-          .eq('status', 'assigned')
-          .eq('assigned_to', userId);
-        if (userLanguages.length > 0) {
-           // Use ilike for case-insensitive matching with any language in the array
-           const conditions = userLanguages.map(lang => `language.ilike.${lang}`).join(',');
-           assignedTasksQuery = assignedTasksQuery.or(conditions);
-        }
-        const { data: assignedTasksData, error: assignedTasksError } = await assignedTasksQuery;
-        if (assignedTasksError) throw assignedTasksError;
+        // 3. Fetch REJECTED contributions for the current user matching user's languages
 
-        // 3. Fetch REJECTED contributions for the current user matching user's languages (case-insensitive)
-        let rejectedContributionsQuery = supabase
-          .from('contributions')
-          .select('tasks!inner(id, language, content, status, priority)')
-          .eq('user_id', userId)
-          .eq('status', 'rejected');
-
-        if (userLanguages.length > 0) {
-           // Filter related tasks by user languages (case-insensitive)
-           const conditions = userLanguages.map(lang => `language.ilike.${lang}`).join(',');
-           rejectedContributionsQuery = rejectedContributionsQuery.or(conditions, { foreignTable: 'tasks' });
-        }
-
-        const { data: rejectedContributionsData, error: rejectedContributionsError } = await rejectedContributionsQuery;
-
-        if (rejectedContributionsError) throw rejectedContributionsError;
-
-        // Combine and process tasks
-        const tasksMap: Record<number, {
-             id: number; 
-             language: string; // Target language
-             source_language: string; // Source language
-             content: any; 
-             status: string; // Store the task status ('pending' or 'assigned')
-             priority: Database["public"]["Enums"]["priority_level"]; // Task priority
-             needsCorrection: boolean; 
-            }> = {};
-
-        // Add pending tasks
-        pendingTasksData?.forEach(task => {
-          const langKey = (task.language || 'Unknown').toLowerCase(); // Standardize key
-          if (!tasksMap[task.id]) { 
-            tasksMap[task.id] = {
-              id: task.id,
-              language: task.language || 'Unknown', // Keep original case for display
-              source_language: (task.content as any)?.source_language || 'Unknown', // Extract source language
-              content: task.content,
-              status: task.status, // 'pending'
-              priority: task.priority, // Store priority
-              needsCorrection: false,
-            };
-          }
-        });
-        
-        // Add assigned tasks (that aren't already pending)
-        assignedTasksData?.forEach(task => {
-            const langKey = (task.language || 'Unknown').toLowerCase(); // Standardize key
-            if (!tasksMap[task.id]) { 
-                tasksMap[task.id] = {
-                    id: task.id,
-                    language: task.language || 'Unknown', // Keep original case for display
-                    source_language: (task.content as any)?.source_language || 'Unknown', // Extract source language
-                    content: task.content,
-                    status: task.status, // 'assigned'
-                    priority: task.priority, // Store priority
-                    needsCorrection: false, 
-                };
-            }
-        });
-
-        // Mark tasks needing correction (from rejected contributions)
-        rejectedContributionsData?.forEach(contribution => {
-          const task = contribution.tasks;
-          if (task) {
-            const langKey = (task.language || 'Unknown').toLowerCase(); // Standardize key
-            if (tasksMap[task.id]) {
-              // Task exists (either pending or assigned), mark it as needing correction
-              tasksMap[task.id].needsCorrection = true;
-            } else {
-              // Task wasn't pending or assigned to user directly, but has a rejected contribution
-              // matching user language filter. Add it.
-              tasksMap[task.id] = {
-                id: task.id,
-                language: task.language || 'Unknown', // Keep original case for display
-                source_language: (task.content as any)?.source_language || 'Unknown', // Extract source language
-                content: task.content,
-                status: task.status, // Status from the task itself
-                priority: task.priority, // Store priority
-                needsCorrection: true,
-              };
-            }
-          }
-        });
-
-        // Process tasks into language groups (using standardized lowercase keys)
-        const tasksByLanguage: Record<string, {
-            totalCount: number;
-            pendingCount: number; 
-            needsCorrectionCount: number; 
-            originalCaseLanguage: string; // Target Language
-            sourceLanguage?: string; // Store a representative source language
-            highestPriority: Database["public"]["Enums"]["priority_level"]; // Store highest priority
-            domains: Record<string, { 
-                totalCount: number; 
-                pendingCount: number; 
-                needsCorrectionCount: number; 
-            }>;
-        }> = {};
-
-        // Filter tasksMap to include only those genuinely available for work/correction
-        const availableTasksForGrouping = Object.values(tasksMap).filter(task => 
-          task.status === 'pending' || task.needsCorrection
-        );
-
-        // Helper to compare priorities
-        const priorityOrder = { low: 1, medium: 2, high: 3 };
-
-        // Now process only the filtered tasks
-        availableTasksForGrouping.forEach(task => {
-          const languageKey = (task.language || 'Unknown').toLowerCase(); // Use lowercase for grouping
-          const originalLanguage = task.language || 'Unknown'; // Keep original for display
-          const domain = (task.content && typeof task.content === 'object') 
-            ? ((task.content as any).domain || (task.content as any).batch_name || 'general') 
-            : 'general';
-
-          if (!tasksByLanguage[languageKey]) {
-            tasksByLanguage[languageKey] = { 
-              totalCount: 0, // This will now represent truly available tasks
-              pendingCount: 0, 
-              needsCorrectionCount: 0, 
-              originalCaseLanguage: originalLanguage, 
-              sourceLanguage: task.source_language, // Set initial source language
-              highestPriority: 'low', // Initialize with lowest priority
-              domains: {} 
-            };
-          } else if (!tasksByLanguage[languageKey].sourceLanguage && task.source_language && task.source_language !== 'Unknown') {
-            // Update source language if it wasn't set yet or was 'Unknown'
-            tasksByLanguage[languageKey].sourceLanguage = task.source_language;
-          }
-          
-          // Update highest priority
-          if (priorityOrder[task.priority] > priorityOrder[tasksByLanguage[languageKey].highestPriority]) {
-            tasksByLanguage[languageKey].highestPriority = task.priority;
-          }
-          
-          if (task.language) {
-             tasksByLanguage[languageKey].originalCaseLanguage = task.language;
-          }
-          
-          if (!tasksByLanguage[languageKey].domains[domain]) {
-            tasksByLanguage[languageKey].domains[domain] = { totalCount: 0, pendingCount: 0, needsCorrectionCount: 0 };
-          }
-
-          // Increment counts for the available task
-          tasksByLanguage[languageKey].totalCount++;
-          tasksByLanguage[languageKey].domains[domain].totalCount++;
-
-          if (task.needsCorrection) {
-            tasksByLanguage[languageKey].needsCorrectionCount++;
-            tasksByLanguage[languageKey].domains[domain].needsCorrectionCount++;
-          } else if (task.status === 'pending') { // Only pending tasks count here now
-            tasksByLanguage[languageKey].pendingCount++;
-            tasksByLanguage[languageKey].domains[domain].pendingCount++;
-          } 
-        });
-
-        // Convert to array format for rendering
-        const taskGroups: AvailableTaskGroupUpdated[] = Object.entries(tasksByLanguage).map(([_, data]) => ({
-          language: data.originalCaseLanguage, // Use original case language for display
-          sourceLanguage: data.sourceLanguage,
-          highestPriority: data.highestPriority,
-          totalCount: data.totalCount,
-          pendingCount: data.pendingCount,
-          needsCorrectionCount: data.needsCorrectionCount,
-          domains: Object.entries(data.domains).map(([domain, domainData]) => ({ 
-            domain,
-            totalCount: domainData.totalCount,
-            pendingCount: domainData.pendingCount,
-            needsCorrectionCount: domainData.needsCorrectionCount,
-          }))
-            .sort((a, b) => b.totalCount - a.totalCount), // Sort domains by count
-        }));
-
-        // Sort languages by total task count (most tasks first)
-        taskGroups.sort((a, b) => b.totalCount - a.totalCount);
-
-        setAvailableTasks(taskGroups);
-        
-      } catch (error: any) {
-        console.error('Error fetching translator dashboard data:', error);
+      } catch (error) {
+        console.error('Error fetching translator data:', error);
       } finally {
         setIsLoading(false);
         setIsLoadingTasks(false);
@@ -355,212 +203,212 @@ export const TranslatorDashboard: React.FC = () => {
     };
 
     fetchData();
-  }, [userId, userLanguages]);
+  }, [userId]);
 
   const formatStatus = (status: Database["public"]["Enums"]["contribution_status"]) => {
     switch (status) {
-      case 'pending_validation': return <span className="text-xs text-yellow-600">Pending Validation</span>;
-      case 'validated':
-      case 'finalized': return <span className="text-xs text-green-600 flex items-center"><CheckCircle className="h-3 w-3 mr-1"/>Approved</span>;
-      case 'rejected': return <span className="text-xs text-red-600 flex items-center"><AlertCircle className="h-3 w-3 mr-1"/>Needs Correction</span>;
-      default: return <span className="text-xs text-gray-500">{status}</span>;
+      case 'pending_validation': return { label: 'Pending Validation', color: 'bg-yellow-100 text-yellow-800' };
+      case 'validated': return { label: 'Validated', color: 'bg-green-100 text-green-800' };
+      case 'rejected': return { label: 'Needs Correction', color: 'bg-red-100 text-red-800' };
+      case 'finalized': return { label: 'Finalized', color: 'bg-blue-100 text-blue-800' };
+      default: return { label: status, color: 'bg-gray-100 text-gray-800' };
     }
   };
-  
-   const timeAgo = (dateString: string) => {
-        const date = new Date(dateString);
-        const now = new Date();
-        const secondsPast = (now.getTime() - date.getTime()) / 1000;
 
-        if (secondsPast < 60) {
-            return parseInt(String(secondsPast)) + 's ago';
-        }
-        if (secondsPast < 3600) {
-            return parseInt(String(secondsPast / 60)) + 'm ago';
-        }
-        if (secondsPast <= 86400) {
-            return parseInt(String(secondsPast / 3600)) + 'h ago';
-        }
-        // For simplicity, return date if older than a day
-        return date.toLocaleDateString();
-    };
+  const timeAgo = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    
+    if (seconds < 60) return 'just now';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 30) return `${days}d ago`;
+    const months = Math.floor(days / 30);
+    return `${months}mo ago`;
+  };
 
   const getPriorityBadge = (priority: Database["public"]["Enums"]["priority_level"]) => {
     switch (priority) {
-      case 'high':
-        return <Badge variant="destructive">High Priority</Badge>;
-      case 'medium':
-        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">Medium Priority</Badge>;
-      case 'low':
-        return <Badge variant="outline">Low Priority</Badge>;
-      default:
-        return null;
+      case 'high': return <Badge variant="destructive">High</Badge>;
+      case 'medium': return <Badge variant="default">Medium</Badge>;
+      case 'low': return <Badge variant="outline">Low</Badge>;
+      default: return null;
     }
   };
 
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center h-40">
-        <Loader2 className="h-8 w-8 animate-spin text-afri-purple" />
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-afri-orange" />
+        <p className="ml-2">Loading translator dashboard...</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="border-none shadow-sm">
-          <CardHeader className="pb-2">
-            <div className="flex justify-between items-center">
-              <CardTitle className="text-sm font-medium text-gray-600">Translations Completed</CardTitle>
-              <Languages className="h-5 w-5 text-afri-purple" />
-            </div>
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      {/* Stats Cards */}
+      <div className="col-span-1 lg:col-span-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Translations Completed</CardDescription>
+              <CardTitle className="text-3xl flex items-center">
+                {stats?.translationsCompleted ?? 0}
+                <CheckCircle className="ml-2 h-5 w-5 text-green-500" />
+              </CardTitle>
+            </CardHeader>
+          </Card>
+          
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Languages</CardDescription>
+              <CardTitle className="text-3xl flex items-center">
+                {stats?.languagesWorkedOn ?? 0}
+                <Languages className="ml-2 h-5 w-5 text-blue-500" />
+              </CardTitle>
+            </CardHeader>
+          </Card>
+          
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Pending Validation</CardDescription>
+              <CardTitle className="text-3xl flex items-center">
+                {stats?.pendingValidation ?? 0}
+                <Clock className="ml-2 h-5 w-5 text-orange-500" />
+              </CardTitle>
+            </CardHeader>
+          </Card>
+          
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Needs Correction</CardDescription>
+              <CardTitle className="text-3xl flex items-center">
+                {stats?.needsCorrection ?? 0}
+                <AlertCircle className="ml-2 h-5 w-5 text-red-500" />
+              </CardTitle>
+            </CardHeader>
+          </Card>
+        </div>
+      </div>
+      
+      {/* Recent Activity Card */}
+      <div className="col-span-1 lg:col-span-6">
+        <Card className="h-full">
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Clock className="mr-2 h-5 w-5" />
+              Recent Activity
+            </CardTitle>
+            <CardDescription>Your latest translation submissions</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.translationsCompleted ?? 0}</div>
-            <CardDescription>Total approved translations</CardDescription>
-          </CardContent>
-        </Card>
-        <Card className="border-none shadow-sm">
-          <CardHeader className="pb-2">
-            <div className="flex justify-between items-center">
-              <CardTitle className="text-sm font-medium text-gray-600">Languages</CardTitle>
-              <Book className="h-5 w-5 text-afri-green" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats?.languagesWorkedOn ?? 0}</div>
-            <CardDescription>Unique languages translated to</CardDescription>
-          </CardContent>
-        </Card>
-        <Card className="border-none shadow-sm">
-          <CardHeader className="pb-2">
-            <div className="flex justify-between items-center">
-              <CardTitle className="text-sm font-medium text-gray-600">Pending Validation</CardTitle>
-               <Clock className="h-5 w-5 text-yellow-500" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats?.pendingValidation ?? 0}</div>
-            <CardDescription>Submissions awaiting review</CardDescription>
-          </CardContent>
-        </Card>
-        <Card className="border-none shadow-sm">
-          <CardHeader className="pb-2">
-             <div className="flex justify-between items-center">
-               <CardTitle className="text-sm font-medium text-gray-600">Needs Correction</CardTitle>
-               <AlertCircle className="h-5 w-5 text-red-500" />
-            </div>
-          </CardHeader>
-          <CardContent>
-             <div className="text-2xl font-bold">{stats?.needsCorrection ?? 0}</div>
-             <CardDescription>Tasks returned for revision</CardDescription>
+            {recentActivity.length === 0 ? (
+              <p className="text-muted-foreground text-center py-6">No recent translation activity</p>
+            ) : (
+              <div className="space-y-4">
+                {recentActivity.map((activity) => {
+                  const { label, color } = formatStatus(activity.status);
+                  return (
+                    <div key={activity.id} className="border rounded-lg p-3">
+                      <div className="flex justify-between">
+                        <h4 className="font-medium">{activity.task_title}</h4>
+                        <span className={`text-xs px-2 py-1 rounded-full ${color}`}>{label}</span>
+                      </div>
+                      <div className="text-sm text-muted-foreground mt-1">
+                        <span className="flex items-center">
+                          <Book className="h-3 w-3 mr-1" /> 
+                          {activity.source_language} to {activity.target_language}
+                        </span>
+                      </div>
+                      <div className="flex justify-between mt-2 text-xs text-muted-foreground">
+                        <span>{timeAgo(activity.created_at)}</span>
+                        <Link 
+                          to={`/translate/${activity.task_id}`} 
+                          className="text-afri-orange flex items-center hover:underline"
+                        >
+                          View <ArrowRight className="h-3 w-3 ml-1" />
+                        </Link>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
-
-      {/* Available Translation Tasks */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle>Available Translation Tasks</CardTitle>
-            <CardDescription>Tasks available for translation, including any needing correction.</CardDescription>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {isLoadingTasks ? (
-            <div className="flex justify-center items-center h-20">
-              <Loader2 className="h-6 w-6 animate-spin text-afri-purple" />
-            </div>
-          ) : availableTasks.length === 0 ? (
-            <p className="text-center text-gray-500 py-4">No translation tasks currently available for your languages.</p>
-          ) : (
-            <div className="space-y-4">
-              {availableTasks.map((group) => (
-                <Card key={group.language} className="p-4 border shadow-sm">
-                  <div className="flex justify-between items-center mb-3">
-                    <div>
-                      <h3 className="text-lg font-semibold text-afri-blue flex items-center gap-2">
-                        <span>{group.sourceLanguage || 'Unknown'}</span>
-                        <ArrowRight className="h-4 w-4 text-gray-400"/>
-                        <span>{group.language}</span> 
-                      </h3>
-                      <div className="flex items-center gap-3 mt-1">
-                         {getPriorityBadge(group.highestPriority)} 
-                        <span className="text-sm text-gray-500">Available Tasks: {group.totalCount}</span>
-                         {group.needsCorrectionCount > 0 && (
-                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                             <AlertCircle className="h-3 w-3 mr-1"/> {group.needsCorrectionCount} Need Correction
-                           </span>
-                         )}
+      
+      {/* Available Tasks Card */}
+      <div className="col-span-1 lg:col-span-6">
+        <Card className="h-full">
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <BarChart className="mr-2 h-5 w-5" />
+              Available Tasks
+            </CardTitle>
+            <CardDescription>Translation tasks available for you</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoadingTasks ? (
+              <div className="flex justify-center items-center h-32">
+                <Loader2 className="h-5 w-5 animate-spin text-afri-orange" />
+                <p className="ml-2 text-sm">Loading tasks...</p>
+              </div>
+            ) : availableTasks.length === 0 ? (
+              <div className="text-center py-6">
+                <p className="text-muted-foreground mb-3">No tasks available for your languages</p>
+                <Link to="/profile">
+                  <Button variant="outline" size="sm">Update Your Languages</Button>
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {availableTasks.map((group, index) => (
+                  <div key={index} className="border rounded-md">
+                    <div className="p-3 bg-muted/50 border-b flex justify-between items-center">
+                      <div>
+                        <h3 className="font-medium">
+                          {group.sourceLanguage || 'Various'} ➝ {group.language}
+                        </h3>
+                        <p className="text-xs text-muted-foreground">
+                          {group.totalCount} task{group.totalCount !== 1 ? 's' : ''} available
+                        </p>
+                      </div>
+                      <div className="flex gap-2 items-center">
+                        {getPriorityBadge(group.highestPriority)}
+                        <Link to={`/translate?language=${encodeURIComponent(group.language)}`}>
+                          <Button size="sm">Translate</Button>
+                        </Link>
                       </div>
                     </div>
-                     <Button asChild size="sm">
-                       <Link to={`/translate?language=${group.language.toLowerCase()}${group.sourceLanguage ? `&source_language=${group.sourceLanguage.toLowerCase()}` : ''}${group.needsCorrectionCount > 0 ? '&corrections=true' : ''}`}>
-                         {group.needsCorrectionCount > 0 ? 'Correct Task(s)' : 'Translate'}
-                       </Link>
-                     </Button>
+                    
+                    <div className="p-3 space-y-2">
+                      {group.domains.map((domain, dIdx) => (
+                        <div key={dIdx} className="flex justify-between items-center text-sm">
+                          <span className="capitalize">{domain.domain}</span>
+                          <span className="text-muted-foreground">
+                            {domain.totalCount} task{domain.totalCount !== 1 ? 's' : ''}
+                            {domain.needsCorrectionCount > 0 && (
+                              <span className="text-red-500 ml-2">
+                                ({domain.needsCorrectionCount} need{domain.needsCorrectionCount !== 1 ? '' : 's'} correction)
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  
-                  {/* Domain Breakdown */}
-                  <div className="space-y-1 pl-4 border-l-2 border-gray-200">
-                    {group.domains.map(domain => (
-                      <div key={domain.domain} className="text-sm text-gray-500 flex justify-between items-center">
-                        <span>
-                          <span className="capitalize font-medium text-gray-700">{domain.domain}:</span> {domain.totalCount} task(s)
-                        </span>
-                         {domain.needsCorrectionCount > 0 && (
-                           <span className="text-xs text-red-600">({domain.needsCorrectionCount} correction needed)</span>
-                         )}
-                      </div>
-                    ))}
-                  </div>
-                </Card>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Recent Activity */}
-      <Card className="border-none shadow-sm">
-        <CardHeader className="pb-3">
-          <CardTitle>Recent Activity</CardTitle>
-          <CardDescription>Your latest translation submissions</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {recentActivity.length === 0 ? (
-            <p className="text-sm text-gray-500">No recent translation activity.</p>
-          ) : (
-            <div className="space-y-4">
-              {recentActivity.map((item) => (
-                <div key={item.id} className="flex items-center justify-between py-2 border-b last:border-0">
-                  <div>
-                    {item.status === 'rejected' ? (
-                       <Link to={`/translate?contribution_id=${item.id}`} className="font-medium text-afri-blue hover:underline">
-                          {item.task_title} (Needs Correction)
-                       </Link>
-                    ) : (
-                       <p className="font-medium">{item.task_title}</p>
-                    )}
-                    <p className="text-sm text-gray-500">{item.source_language} → {item.target_language}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm">{timeAgo(item.created_at)}</p>
-                    {formatStatus(item.status)}
-                     {item.status === 'rejected' && (
-                        <Button asChild variant="link" size="sm" className="p-0 h-auto text-afri-red">
-                            <Link to={`/translate?contribution_id=${item.id}`}>Correct Task</Link>
-                        </Button>
-                     )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }; 

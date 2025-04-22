@@ -15,6 +15,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { createProjectWithOwner } from '@/utils/projectUtils';
+import { ProjectType, PriorityLevel } from '@/types/project';
 
 // Define form validation schema
 const projectSchema = z.object({
@@ -90,43 +92,37 @@ export const ProjectCreate: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      // Insert the new project
-      const { data: projectData, error } = await supabase
-        .from('projects')
-        .insert({
-          name: data.name,
-          description: data.description || null,
-          type: data.type,
-          status: 'active',
-          created_by: userId,
-          source_language: data.sourceLanguage,
-          target_languages: data.targetLanguages,
-        })
-        .select('id')
-        .single();
+      // Prepare project data
+      const projectData = {
+        name: data.name,
+        description: data.description || null,
+        type: data.type as ProjectType,
+        status: 'active' as const,
+        created_by: userId,
+        source_language: data.sourceLanguage,
+        target_languages: data.targetLanguages,
+        archived: false,
+        updated_at: new Date().toISOString(), // Add required fields
+        settings: {
+          require_validation: true,
+          default_priority: 'medium' as PriorityLevel,
+        },
+      };
 
-      if (error) throw error;
+      // Use transaction utility to create project
+      const projectId = await createProjectWithOwner(projectData, userId);
 
-      // Add the creator as an owner
-      if (projectData?.id) {
-        const { error: memberError } = await supabase
-          .from('project_members')
-          .insert({
-            project_id: projectData.id,
-            user_id: userId,
-            role: 'owner',
-          });
-
-        if (memberError) throw memberError;
-
-        toast({
-          title: 'Project created',
-          description: 'Your project has been created successfully!',
-        });
-
-        // Navigate to the new project
-        navigate(`/projects/${projectData.id}`);
+      if (!projectId) {
+        throw new Error('Failed to create project');
       }
+
+      toast({
+        title: 'Project created',
+        description: 'Your project has been created successfully!',
+      });
+
+      // Navigate to the new project
+      navigate(`/projects/${projectId}`);
     } catch (error) {
       console.error('Error creating project:', error);
       toast({
